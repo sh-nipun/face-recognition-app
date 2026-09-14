@@ -8,345 +8,317 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0A0E14;
-    --panel: #111825;
-    --panel-raised: #161F30;
-    --line: #232E42;
+    --bg-1: #05070B;
+    --bg-2: #0A1018;
+    --panel: rgba(255, 255, 255, 0.035);
+    --panel-solid: #10151F;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(255, 255, 255, 0.16);
     --teal: #4FD1C5;
-    --teal-dim: rgba(79, 209, 197, 0.14);
-    --text: #E8ECEF;
-    --text-dim: #6B7688;
-    --amber: #F0A857;
-    --amber-dim: rgba(240, 168, 87, 0.14);
+    --teal-soft: rgba(79, 209, 197, 0.14);
+    --violet: #8C7CFF;
+    --text: #EDEFF3;
+    --text-dim: #7C8698;
+    --amber: #F5A75C;
+    --amber-soft: rgba(245, 167, 92, 0.14);
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
 
   body {
     margin: 0;
-    background: var(--bg);
+    min-height: 100vh;
     color: var(--text);
     font-family: 'Space Grotesk', sans-serif;
-    min-height: 100vh;
+    background: var(--bg-1);
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding: 56px 20px 80px;
+    padding: 64px 20px 100px;
+    position: relative;
+    overflow-x: hidden;
   }
 
-  .app {
-    width: 100%;
-    max-width: 420px;
+  .mesh { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .mesh::before, .mesh::after {
+    content: '';
+    position: absolute;
+    width: 60vw; height: 60vw;
+    max-width: 620px; max-height: 620px;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.16;
   }
+  .mesh::before { background: var(--teal); top: -10%; left: -15%; animation: drift1 22s ease-in-out infinite; }
+  .mesh::after { background: var(--violet); bottom: -15%; right: -15%; animation: drift2 26s ease-in-out infinite; }
+  @keyframes drift1 { 0%, 100% { transform: translate(0,0) scale(1); } 50% { transform: translate(6%,8%) scale(1.1); } }
+  @keyframes drift2 { 0%, 100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-8%,-6%) scale(1.08); } }
 
-  header {
-    margin-bottom: 32px;
-  }
+  .app { position: relative; z-index: 1; width: 100%; max-width: 440px; }
+
+  .rise { opacity: 0; transform: translateY(14px); animation: rise 0.7s var(--ease) forwards; }
+  @keyframes rise { to { opacity: 1; transform: translateY(0); } }
+
+  header { margin-bottom: 30px; }
+  header.rise { animation-delay: 0.02s; }
 
   .eyebrow {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12px;
     color: var(--teal);
-    letter-spacing: 0.02em;
-    margin: 0 0 10px;
+    letter-spacing: 0.03em;
+    margin: 0 0 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .eyebrow .pulse-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--teal);
+    animation: dotpulse 2.2s ease-out infinite;
+  }
+  @keyframes dotpulse {
+    0% { box-shadow: 0 0 0 0 rgba(79,209,197,0.5); }
+    70% { box-shadow: 0 0 0 8px rgba(79,209,197,0); }
+    100% { box-shadow: 0 0 0 0 rgba(79,209,197,0); }
   }
 
   h1 {
-    font-size: 26px;
-    font-weight: 600;
-    margin: 0 0 8px;
-    letter-spacing: -0.01em;
+    font-size: 28px; font-weight: 600;
+    margin: 0 0 10px; letter-spacing: -0.015em;
+    background: linear-gradient(135deg, #FFFFFF 30%, #A9B4C4 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
   }
 
-  header p {
-    color: var(--text-dim);
-    font-size: 14.5px;
-    line-height: 1.5;
-    margin: 0;
-    max-width: 34ch;
-  }
+  header p { color: var(--text-dim); font-size: 14.5px; line-height: 1.6; margin: 0; max-width: 36ch; }
 
-  /* Viewfinder */
+  .viewfinder-wrap.rise { animation-delay: 0.10s; }
+
   .viewfinder {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 4 / 5;
-    background: #000;
-    border-radius: 4px;
-    overflow: hidden;
-    border: 1px solid var(--line);
+    position: relative; width: 100%; aspect-ratio: 4 / 5;
+    background: #000; border-radius: 16px; overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.2), 0 20px 60px -20px rgba(0,0,0,0.6);
+    transition: transform 0.2s var(--ease);
+  }
+  .viewfinder.idle-glow { animation: idleGlow 4s ease-in-out infinite; }
+  @keyframes idleGlow {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(0,0,0,0.2), 0 20px 60px -20px rgba(0,0,0,0.6), 0 0 0 0 rgba(79,209,197,0); }
+    50% { box-shadow: 0 0 0 1px rgba(0,0,0,0.2), 0 20px 60px -20px rgba(0,0,0,0.6), 0 0 34px 2px rgba(79,209,197,0.16); }
   }
 
-  video, canvas.still {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
+  video, canvas.still { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); }
   canvas.still { position: absolute; inset: 0; display: none; }
 
   .brackets span {
-    position: absolute;
-    width: 28px;
-    height: 28px;
-    border: 2px solid var(--teal);
-    opacity: 0.85;
+    position: absolute; width: 30px; height: 30px;
+    border: 2px solid var(--teal); opacity: 0.9;
+    filter: drop-shadow(0 0 6px rgba(79,209,197,0.5));
+    animation: breathe 3.4s ease-in-out infinite;
   }
-  .brackets .tl { top: 14px; left: 14px; border-right: none; border-bottom: none; }
-  .brackets .tr { top: 14px; right: 14px; border-left: none; border-bottom: none; }
-  .brackets .bl { bottom: 14px; left: 14px; border-right: none; border-top: none; }
-  .brackets .br { bottom: 14px; right: 14px; border-left: none; border-top: none; }
+  .brackets .tl { top: 16px; left: 16px; border-right: none; border-bottom: none; border-radius: 6px 0 0 0; animation-delay: 0s; }
+  .brackets .tr { top: 16px; right: 16px; border-left: none; border-bottom: none; border-radius: 0 6px 0 0; animation-delay: 0.15s; }
+  .brackets .bl { bottom: 16px; left: 16px; border-right: none; border-top: none; border-radius: 0 0 0 6px; animation-delay: 0.3s; }
+  .brackets .br { bottom: 16px; right: 16px; border-left: none; border-top: none; border-radius: 0 0 6px 0; animation-delay: 0.45s; }
+  @keyframes breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 
   .scanline {
-    position: absolute;
-    left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--teal), transparent);
-    top: 0;
-    opacity: 0;
-    box-shadow: 0 0 12px 1px var(--teal);
+    position: absolute; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, transparent, var(--teal) 20%, #fff 50%, var(--teal) 80%, transparent);
+    top: 0; opacity: 0;
+    box-shadow: 0 0 20px 3px rgba(79,209,197,0.7);
+    pointer-events: none;
   }
-  .scanline.active {
-    animation: sweep 0.9s ease-in-out;
-  }
-  @keyframes sweep {
-    0% { top: 0; opacity: 1; }
-    100% { top: 100%; opacity: 0; }
-  }
+  .scanline.active { animation: sweep 1.1s var(--ease); }
+  @keyframes sweep { 0% { top: 0; opacity: 1; } 85% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+
+  .capture-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  .capture-flash.active { animation: flashfade 0.4s var(--ease); }
+  @keyframes flashfade { 0% { opacity: 0.55; } 100% { opacity: 0; } }
 
   .no-camera {
-    position: absolute;
-    inset: 0;
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 24px;
-    gap: 16px;
+    position: absolute; inset: 0; display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 28px; gap: 18px;
+    background: radial-gradient(circle at center, rgba(255,255,255,0.03), transparent 70%);
   }
-
   .no-camera p {
-    color: var(--text-dim);
-    font-size: 13.5px;
-    font-family: 'IBM Plex Mono', monospace;
-    line-height: 1.6;
-    margin: 0;
-    max-width: 26ch;
+    color: var(--text-dim); font-size: 13.5px;
+    font-family: 'IBM Plex Mono', monospace; line-height: 1.7;
+    margin: 0; max-width: 26ch;
   }
 
   .upload-btn {
-    background: var(--teal-dim);
-    border: 1px solid rgba(79, 209, 197, 0.35);
+    background: var(--teal-soft);
+    border: 1px solid rgba(79,209,197,0.35);
     color: var(--teal);
-    padding: 11px 20px;
-    border-radius: 4px;
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
+    padding: 12px 22px; border-radius: 10px;
+    font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 500;
+    cursor: pointer; position: relative; overflow: hidden;
+    transition: transform 0.2s var(--ease-spring), background 0.2s var(--ease), box-shadow 0.2s var(--ease);
   }
-  .upload-btn:hover { background: rgba(79, 209, 197, 0.22); }
+  .upload-btn:hover { background: rgba(79,209,197,0.22); box-shadow: 0 6px 20px -6px rgba(79,209,197,0.4); }
+  .upload-btn:active { transform: scale(0.94); }
 
   .preview-img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: none;
-    cursor: pointer;
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; display: none; cursor: pointer;
+    filter: brightness(0.94);
+    transition: filter 0.25s var(--ease);
   }
+  .preview-img:hover { filter: brightness(1.05); }
 
-  /* Status line */
+  .status-row.rise { animation-delay: 0.16s; }
   .status-row {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    margin-top: 14px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12.5px;
-    color: var(--text-dim);
-    min-height: 18px;
+    display: flex; align-items: center; gap: 10px; margin-top: 16px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--text-dim);
+    min-height: 20px;
   }
-
   .status-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    flex-shrink: 0;
+    width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0;
+    transition: background 0.3s var(--ease), box-shadow 0.3s var(--ease);
   }
-  .status-dot.ready { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
-  .status-dot.match { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
-  .status-dot.no-match { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
-  .status-dot.busy { background: var(--text-dim); animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity: 0.3; } }
+  .status-dot.ready { background: var(--teal); box-shadow: 0 0 8px var(--teal); }
+  .status-dot.match { background: var(--teal); box-shadow: 0 0 8px var(--teal); }
+  .status-dot.no-match { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .status-dot.busy { background: var(--text-dim); animation: pulse 0.9s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; transform: scale(0.8); } }
+  #statusText { transition: opacity 0.25s var(--ease); }
 
-  /* Name input */
-  .name-field {
-    margin-top: 20px;
-  }
+  .name-field.rise { animation-delay: 0.22s; }
+  .name-field { margin-top: 22px; }
   .name-field label {
-    display: block;
-    font-size: 12.5px;
-    color: var(--text-dim);
-    margin-bottom: 7px;
-    font-family: 'IBM Plex Mono', monospace;
+    display: block; font-size: 12.5px; color: var(--text-dim);
+    margin-bottom: 8px; font-family: 'IBM Plex Mono', monospace;
   }
   .name-field input {
-    width: 100%;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 11px 13px;
-    color: var(--text);
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 14.5px;
-    outline: none;
-    transition: border-color 0.15s;
+    width: 100%; background: var(--panel); backdrop-filter: blur(12px);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 13px 15px; color: var(--text);
+    font-family: 'Space Grotesk', sans-serif; font-size: 14.5px; outline: none;
+    transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease), transform 0.15s var(--ease);
   }
-  .name-field input:focus { border-color: var(--teal); }
+  .name-field input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(79,209,197,0.12); }
   .name-field input::placeholder { color: #3E4A5E; }
+  .name-field input.shake { animation: shake 0.4s var(--ease); }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 
-  /* Buttons */
-  .actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 16px;
-  }
+  .actions.rise { animation-delay: 0.28s; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
 
   button {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 14.5px;
-    font-weight: 500;
-    padding: 13px 16px;
-    border-radius: 4px;
-    border: 1px solid var(--line);
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+    font-family: 'Space Grotesk', sans-serif; font-size: 14.5px; font-weight: 500;
+    padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border);
+    cursor: pointer; position: relative; overflow: hidden;
+    transition: transform 0.18s var(--ease-spring), border-color 0.2s var(--ease),
+                background 0.2s var(--ease), box-shadow 0.25s var(--ease), opacity 0.2s var(--ease);
   }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button:not(:disabled):active { transform: scale(0.96); }
 
   .btn-primary {
-    background: var(--teal);
-    color: #06110F;
-    border-color: var(--teal);
-    font-weight: 600;
+    background: linear-gradient(135deg, var(--teal), #3DBFB2);
+    color: #06110F; border-color: transparent; font-weight: 600;
+    box-shadow: 0 8px 24px -10px rgba(79,209,197,0.55);
   }
-  .btn-primary:not(:disabled):hover { background: #62DBD0; }
+  .btn-primary:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 12px 30px -8px rgba(79,209,197,0.7); }
 
-  .btn-secondary {
-    background: transparent;
-    color: var(--text);
+  .btn-secondary { background: var(--panel); backdrop-filter: blur(12px); color: var(--text); }
+  .btn-secondary:not(:disabled):hover { border-color: var(--border-hover); background: rgba(255,255,255,0.06); transform: translateY(-2px); }
+
+  .ripple {
+    position: absolute; border-radius: 50%; background: rgba(255,255,255,0.5);
+    transform: scale(0); animation: rippleAnim 0.6s var(--ease) forwards; pointer-events: none;
   }
-  .btn-secondary:not(:disabled):hover { border-color: #3A4760; background: var(--panel); }
+  @keyframes rippleAnim { to { transform: scale(2.6); opacity: 0; } }
 
-  /* Result banner */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(0,0,0,0.25); border-top-color: currentColor; border-radius: 50%;
+    animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px;
+  }
+  .btn-secondary .spinner { border: 2px solid rgba(255,255,255,0.2); border-top-color: currentColor; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   .result {
-    margin-top: 18px;
-    padding: 14px 16px;
-    border-radius: 4px;
-    border: 1px solid var(--line);
-    background: var(--panel);
-    display: none;
+    margin-top: 20px; padding: 16px 18px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--panel); backdrop-filter: blur(12px);
+    max-height: 0; opacity: 0; overflow: hidden; padding-top: 0; padding-bottom: 0;
+    transition: max-height 0.4s var(--ease), opacity 0.3s var(--ease),
+                padding 0.4s var(--ease), border-color 0.3s var(--ease), background 0.3s var(--ease), transform 0.4s var(--ease-spring);
+    transform: scale(0.97);
   }
-  .result.show { display: block; }
-  .result.match { border-color: rgba(79, 209, 197, 0.35); background: var(--teal-dim); }
-  .result.no-match { border-color: rgba(240, 168, 87, 0.35); background: var(--amber-dim); }
+  .result.show { max-height: 120px; opacity: 1; padding-top: 16px; padding-bottom: 16px; transform: scale(1); }
+  .result.match { border-color: rgba(79,209,197,0.4); background: var(--teal-soft); }
+  .result.no-match { border-color: rgba(245,167,92,0.4); background: var(--amber-soft); }
+  .result-name { font-size: 16.5px; font-weight: 600; margin: 0 0 4px; }
+  .result-meta { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-dim); margin: 0; }
 
-  .result-name {
-    font-size: 16px;
-    font-weight: 600;
-    margin: 0 0 3px;
-  }
-  .result-meta {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    color: var(--text-dim);
-    margin: 0;
-  }
-
-  /* Log */
-  .log-section {
-    margin-top: 40px;
-  }
-  .log-title {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    color: var(--text-dim);
-    margin: 0 0 12px;
-    letter-spacing: 0.02em;
-  }
-  .log-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
+  .log-section.rise { animation-delay: 0.34s; }
+  .log-section { margin-top: 44px; }
+  .log-title { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-dim); margin: 0 0 14px; letter-spacing: 0.03em; }
+  .log-list { display: flex; flex-direction: column; gap: 1px; }
   .log-entry {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--line);
-    font-size: 13.5px;
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 13.5px;
+    animation: logIn 0.4s var(--ease) both;
   }
+  @keyframes logIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
   .log-entry:first-child { padding-top: 0; }
   .log-entry .who { font-weight: 500; }
-  .log-entry .meta {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11.5px;
-    color: var(--text-dim);
-  }
-  .log-empty {
-    color: var(--text-dim);
-    font-size: 13.5px;
-    font-family: 'IBM Plex Mono', monospace;
-  }
+  .log-entry .meta { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--text-dim); }
+  .log-empty { color: var(--text-dim); font-size: 13.5px; font-family: 'IBM Plex Mono', monospace; }
 
   @media (prefers-reduced-motion: reduce) {
-    .scanline.active { animation: none; }
-    .status-dot.busy { animation: none; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 </style>
 </head>
 <body>
 
+<div class="mesh"></div>
+
 <div class="app">
-  <header>
-    <p class="eyebrow">LOCAL FACE SCANNER</p>
+  <header class="rise">
+    <p class="eyebrow"><span class="pulse-dot"></span>LOCAL FACE SCANNER</p>
     <h1>Face Recognition</h1>
     <p>Position your face in the frame, then register it under a name or verify it against everyone already on file.</p>
   </header>
 
-  <div class="viewfinder" id="viewfinder">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas class="still" id="stillCanvas"></canvas>
-    <div class="brackets">
-      <span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span>
-    </div>
-    <div class="scanline" id="scanline"></div>
-    <img class="preview-img" id="previewImg" alt="Selected face photo">
-    <div class="no-camera" id="noCamera">
-      <p>No camera detected. Upload a photo instead — a clear, front-facing shot works best.</p>
-      <button class="upload-btn" id="uploadTrigger" type="button">Choose photo</button>
-      <input type="file" id="fileInput" accept="image/*" style="display:none">
+  <div class="viewfinder-wrap rise">
+    <div class="viewfinder idle-glow" id="viewfinder">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas class="still" id="stillCanvas"></canvas>
+      <img class="preview-img" id="previewImg" alt="Selected face photo">
+      <div class="brackets">
+        <span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span>
+      </div>
+      <div class="scanline" id="scanline"></div>
+      <div class="capture-flash" id="captureFlash"></div>
+      <div class="no-camera" id="noCamera">
+        <p>No camera detected. Upload a photo instead — a clear, front-facing shot works best.</p>
+        <button class="upload-btn" id="uploadTrigger" type="button">Choose photo</button>
+        <input type="file" id="fileInput" accept="image/*" style="display:none">
+      </div>
     </div>
   </div>
 
-  <div class="status-row">
+  <div class="status-row rise">
     <span class="status-dot" id="statusDot"></span>
     <span id="statusText">Starting camera…</span>
   </div>
 
-  <div class="name-field">
+  <div class="name-field rise">
     <label for="nameInput">Name (for registering)</label>
     <input type="text" id="nameInput" placeholder="e.g. Nipun">
   </div>
 
-  <div class="actions">
+  <div class="actions rise">
     <button class="btn-secondary" id="registerBtn" disabled>Register face</button>
     <button class="btn-primary" id="verifyBtn" disabled>Verify face</button>
   </div>
@@ -356,7 +328,7 @@
     <p class="result-meta" id="resultMeta"></p>
   </div>
 
-  <div class="log-section">
+  <div class="log-section rise">
     <p class="log-title">RECENT SCANS</p>
     <div class="log-list" id="logList">
       <p class="log-empty">Nothing yet.</p>
@@ -370,6 +342,8 @@
   const video = document.getElementById('video');
   const stillCanvas = document.getElementById('stillCanvas');
   const scanline = document.getElementById('scanline');
+  const captureFlash = document.getElementById('captureFlash');
+  const viewfinder = document.getElementById('viewfinder');
   const noCamera = document.getElementById('noCamera');
   const previewImg = document.getElementById('previewImg');
   const uploadTrigger = document.getElementById('uploadTrigger');
@@ -389,9 +363,29 @@
   let selectedFile = null;
 
   function setStatus(text, mode) {
-    statusText.textContent = text;
-    statusDot.className = 'status-dot' + (mode ? ' ' + mode : '');
+    statusText.style.opacity = 0;
+    setTimeout(() => {
+      statusText.textContent = text;
+      statusDot.className = 'status-dot' + (mode ? ' ' + mode : '');
+      statusText.style.opacity = 1;
+    }, 120);
   }
+
+  function spawnRipple(e, btn) {
+    const rect = btn.getBoundingClientRect();
+    const ripple = document.createElement('span');
+    const size = Math.max(rect.width, rect.height) * 1.2;
+    ripple.className = 'ripple';
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+    ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+    btn.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 650);
+  }
+
+  [registerBtn, verifyBtn, uploadTrigger].forEach(btn => {
+    btn.addEventListener('click', (e) => spawnRipple(e, btn));
+  });
 
   async function startCamera() {
     try {
@@ -451,12 +445,19 @@
     scanline.classList.remove('active');
     void scanline.offsetWidth;
     scanline.classList.add('active');
+
+    captureFlash.classList.remove('active');
+    void captureFlash.offsetWidth;
+    captureFlash.classList.add('active');
+
+    viewfinder.style.transform = 'scale(0.985)';
+    setTimeout(() => { viewfinder.style.transform = 'scale(1)'; }, 180);
   }
 
   function addLogEntry(text, meta) {
     entries.unshift({ text, meta, time: new Date() });
     entries = entries.slice(0, 8);
-    logList.innerHTML = entries.map(e => `
+    logList.innerHTML = entries.map((e) => `
       <div class="log-entry">
         <span class="who">${e.text}</span>
         <span class="meta">${e.meta} · ${e.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
@@ -464,20 +465,37 @@
     `).join('');
   }
 
+  function setButtonLoading(btn, loading, label) {
+    if (loading) {
+      btn.dataset.label = btn.textContent;
+      btn.innerHTML = `<span class="spinner"></span>${label}`;
+    } else {
+      btn.textContent = btn.dataset.label || label;
+    }
+  }
+
   function setButtonsBusy(busy) {
     registerBtn.disabled = busy;
     verifyBtn.disabled = busy;
+  }
+
+  function showResult(mode) {
+    result.className = 'result show ' + mode;
   }
 
   registerBtn.addEventListener('click', async () => {
     const name = nameInput.value.trim();
     if (!name) {
       setStatus('Enter a name before registering', 'no-match');
+      nameInput.classList.remove('shake');
+      void nameInput.offsetWidth;
+      nameInput.classList.add('shake');
       nameInput.focus();
       return;
     }
     flash();
     setButtonsBusy(true);
+    setButtonLoading(registerBtn, true, 'Registering…');
     setStatus('Registering…', 'busy');
     result.className = 'result';
 
@@ -495,28 +513,30 @@
         setStatus('Registered', 'ready');
         resultName.textContent = `${name} registered`;
         resultMeta.textContent = 'Face on file for future verification';
-        result.className = 'result show match';
+        showResult('match');
         addLogEntry(`${name} registered`, 'NEW');
         nameInput.value = '';
       } else {
         setStatus(data.message || 'No face detected', 'no-match');
         resultName.textContent = 'Registration failed';
         resultMeta.textContent = data.message || 'No face detected in frame';
-        result.className = 'result show no-match';
+        showResult('no-match');
       }
     } catch (err) {
       setStatus('Could not reach server', 'no-match');
       resultName.textContent = 'Connection error';
       resultMeta.textContent = 'Is the backend running on port 8000?';
-      result.className = 'result show no-match';
+      showResult('no-match');
     } finally {
       setButtonsBusy(false);
+      setButtonLoading(registerBtn, false, 'Register face');
     }
   });
 
   verifyBtn.addEventListener('click', async () => {
     flash();
     setButtonsBusy(true);
+    setButtonLoading(verifyBtn, true, 'Scanning…');
     setStatus('Scanning…', 'busy');
     result.className = 'result';
 
@@ -534,27 +554,28 @@
         setStatus('Match found', 'match');
         resultName.textContent = data.name;
         resultMeta.textContent = `${data.confidence}% confidence`;
-        result.className = 'result show match';
+        showResult('match');
         addLogEntry(data.name, `${data.confidence}% match`);
       } else if (data.status === 'success' && !data.match) {
         setStatus('No match on file', 'no-match');
         resultName.textContent = 'Unrecognized';
         resultMeta.textContent = 'No registered face matched this scan';
-        result.className = 'result show no-match';
+        showResult('no-match');
         addLogEntry('Unrecognized face', 'NO MATCH');
       } else {
         setStatus(data.message || 'No face detected', 'no-match');
         resultName.textContent = 'Scan failed';
         resultMeta.textContent = data.message || 'No face detected in frame';
-        result.className = 'result show no-match';
+        showResult('no-match');
       }
     } catch (err) {
       setStatus('Could not reach server', 'no-match');
       resultName.textContent = 'Connection error';
       resultMeta.textContent = 'Is the backend running on port 8000?';
-      result.className = 'result show no-match';
+      showResult('no-match');
     } finally {
       setButtonsBusy(false);
+      setButtonLoading(verifyBtn, false, 'Verify face');
     }
   });
 

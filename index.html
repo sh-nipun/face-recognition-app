@@ -41,6 +41,9 @@
     position: relative;
     overflow-x: hidden;
   }
+  @media (min-width: 900px) {
+    body { align-items: center; padding: 40px 48px; }
+  }
 
   .mesh { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
   .mesh::before, .mesh::after {
@@ -96,6 +99,58 @@
   }
 
   .app { position: relative; z-index: 1; width: 100%; max-width: 460px; }
+
+  .layout {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 1080px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  @media (min-width: 900px) {
+    .layout {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 64px;
+    }
+    .hero-copy { flex: 1; max-width: 420px; }
+    .hero-copy h1 { font-size: 44px; }
+    .hero-copy p { font-size: 16px; max-width: 42ch; }
+    .app { max-width: 440px; flex-shrink: 0; }
+    header { display: none; }
+  }
+
+  .hero-copy { display: none; }
+  @media (min-width: 900px) {
+    .hero-copy { display: block; }
+  }
+
+  .hero-feature-list {
+    margin-top: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .hero-feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 13.5px;
+    color: var(--text-dim);
+  }
+  .hero-feature .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--teal);
+    margin-top: 6px;
+    flex-shrink: 0;
+    box-shadow: 0 0 8px var(--teal);
+  }
+  .hero-feature strong { color: var(--text); font-weight: 500; }
 
   .rise { opacity: 0; transform: translateY(14px); animation: rise 0.7s var(--ease) forwards; }
   @keyframes rise { to { opacity: 1; transform: translateY(0); } }
@@ -334,7 +389,19 @@
 <div class="mesh"></div>
 <div class="grid-overlay"></div>
 
-<div class="app">
+<div class="layout">
+  <div class="hero-copy">
+    <p class="eyebrow"><span class="pulse-dot"></span>LOCAL FACE SCANNER</p>
+    <h1 style="background: linear-gradient(135deg, #FFFFFF 20%, var(--teal) 120%); -webkit-background-clip: text; background-clip: text; color: transparent;">Face Recognition</h1>
+    <p>Position your face in the frame, then register it under a name or verify it against everyone already on file — all running locally, nothing leaves your machine.</p>
+    <div class="hero-feature-list">
+      <div class="hero-feature"><span class="dot"></span><span><strong>Instant registration.</strong> One capture ties a face to a name.</span></div>
+      <div class="hero-feature"><span class="dot"></span><span><strong>Confidence scoring.</strong> Every verification returns a match percentage.</span></div>
+      <div class="hero-feature"><span class="dot"></span><span><strong>Works without a webcam.</strong> Upload a photo if no camera is found.</span></div>
+    </div>
+  </div>
+
+  <div class="app">
   <div class="card">
   <header class="rise">
     <p class="eyebrow"><span class="pulse-dot"></span>LOCAL FACE SCANNER</p>
@@ -385,6 +452,7 @@
     <div class="log-list" id="logList">
       <p class="log-empty">Nothing yet.</p>
     </div>
+  </div>
   </div>
   </div>
 </div>

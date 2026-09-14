@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Face Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0A0E14;
+    --panel: #111825;
+    --panel-raised: #161F30;
+    --line: #232E42;
+    --teal: #4FD1C5;
+    --teal-dim: rgba(79, 209, 197, 0.14);
+    --text: #E8ECEF;
+    --text-dim: #6B7688;
+    --amber: #F0A857;
+    --amber-dim: rgba(240, 168, 87, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 56px 20px 80px;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 420px;
+  }
+
+  header {
+    margin-bottom: 32px;
+  }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--teal);
+    letter-spacing: 0.02em;
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+
+  header p {
+    color: var(--text-dim);
+    font-size: 14.5px;
+    line-height: 1.5;
+    margin: 0;
+    max-width: 34ch;
+  }
+
+  /* Viewfinder */
+  .viewfinder {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    background: #000;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+
+  video, canvas.still {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  canvas.still { position: absolute; inset: 0; display: none; }
+
+  .brackets span {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--teal);
+    opacity: 0.85;
+  }
+  .brackets .tl { top: 14px; left: 14px; border-right: none; border-bottom: none; }
+  .brackets .tr { top: 14px; right: 14px; border-left: none; border-bottom: none; }
+  .brackets .bl { bottom: 14px; left: 14px; border-right: none; border-top: none; }
+  .brackets .br { bottom: 14px; right: 14px; border-left: none; border-top: none; }
+
+  .scanline {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--teal), transparent);
+    top: 0;
+    opacity: 0;
+    box-shadow: 0 0 12px 1px var(--teal);
+  }
+  .scanline.active {
+    animation: sweep 0.9s ease-in-out;
+  }
+  @keyframes sweep {
+    0% { top: 0; opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  .no-camera {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    gap: 16px;
+  }
+
+  .no-camera p {
+    color: var(--text-dim);
+    font-size: 13.5px;
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1.6;
+    margin: 0;
+    max-width: 26ch;
+  }
+
+  .upload-btn {
+    background: var(--teal-dim);
+    border: 1px solid rgba(79, 209, 197, 0.35);
+    color: var(--teal);
+    padding: 11px 20px;
+    border-radius: 4px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .upload-btn:hover { background: rgba(79, 209, 197, 0.22); }
+
+  .preview-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+    cursor: pointer;
+  }
+
+  /* Status line */
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    min-height: 18px;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .status-dot.ready { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
+  .status-dot.match { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
+  .status-dot.no-match { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .status-dot.busy { background: var(--text-dim); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  /* Name input */
+  .name-field {
+    margin-top: 20px;
+  }
+  .name-field label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-bottom: 7px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .name-field input {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 11px 13px;
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14.5px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .name-field input:focus { border-color: var(--teal); }
+  .name-field input::placeholder { color: #3E4A5E; }
+
+  /* Buttons */
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  button {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14.5px;
+    font-weight: 500;
+    padding: 13px 16px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+  }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-primary {
+    background: var(--teal);
+    color: #06110F;
+    border-color: var(--teal);
+    font-weight: 600;
+  }
+  .btn-primary:not(:disabled):hover { background: #62DBD0; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+  }
+  .btn-secondary:not(:disabled):hover { border-color: #3A4760; background: var(--panel); }
+
+  /* Result banner */
+  .result {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    display: none;
+  }
+  .result.show { display: block; }
+  .result.match { border-color: rgba(79, 209, 197, 0.35); background: var(--teal-dim); }
+  .result.no-match { border-color: rgba(240, 168, 87, 0.35); background: var(--amber-dim); }
+
+  .result-name {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 3px;
+  }
+  .result-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 0;
+  }
+
+  /* Log */
+  .log-section {
+    margin-top: 40px;
+  }
+  .log-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 0 0 12px;
+    letter-spacing: 0.02em;
+  }
+  .log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .log-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 13.5px;
+  }
+  .log-entry:first-child { padding-top: 0; }
+  .log-entry .who { font-weight: 500; }
+  .log-entry .meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .log-empty {
+    color: var(--text-dim);
+    font-size: 13.5px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scanline.active { animation: none; }
+    .status-dot.busy { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <p class="eyebrow">LOCAL FACE SCANNER</p>
+    <h1>Face Recognition</h1>
+    <p>Position your face in the frame, then register it under a name or verify it against everyone already on file.</p>
+  </header>
+
+  <div class="viewfinder" id="viewfinder">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas class="still" id="stillCanvas"></canvas>
+    <div class="brackets">
+      <span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span>
+    </div>
+    <div class="scanline" id="scanline"></div>
+    <img class="preview-img" id="previewImg" alt="Selected face photo">
+    <div class="no-camera" id="noCamera">
+      <p>No camera detected. Upload a photo instead — a clear, front-facing shot works best.</p>
+      <button class="upload-btn" id="uploadTrigger" type="button">Choose photo</button>
+      <input type="file" id="fileInput" accept="image/*" style="display:none">
+    </div>
+  </div>
+
+  <div class="status-row">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Starting camera…</span>
+  </div>
+
+  <div class="name-field">
+    <label for="nameInput">Name (for registering)</label>
+    <input type="text" id="nameInput" placeholder="e.g. Nipun">
+  </div>
+
+  <div class="actions">
+    <button class="btn-secondary" id="registerBtn" disabled>Register face</button>
+    <button class="btn-primary" id="verifyBtn" disabled>Verify face</button>
+  </div>
+
+  <div class="result" id="result">
+    <p class="result-name" id="resultName"></p>
+    <p class="result-meta" id="resultMeta"></p>
+  </div>
+
+  <div class="log-section">
+    <p class="log-title">RECENT SCANS</p>
+    <div class="log-list" id="logList">
+      <p class="log-empty">Nothing yet.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = 'http://127.0.0.1:8000';
+
+  const video = document.getElementById('video');
+  const stillCanvas = document.getElementById('stillCanvas');
+  const scanline = document.getElementById('scanline');
+  const noCamera = document.getElementById('noCamera');
+  const previewImg = document.getElementById('previewImg');
+  const uploadTrigger = document.getElementById('uploadTrigger');
+  const fileInput = document.getElementById('fileInput');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const nameInput = document.getElementById('nameInput');
+  const registerBtn = document.getElementById('registerBtn');
+  const verifyBtn = document.getElementById('verifyBtn');
+  const result = document.getElementById('result');
+  const resultName = document.getElementById('resultName');
+  const resultMeta = document.getElementById('resultMeta');
+  const logList = document.getElementById('logList');
+
+  let entries = [];
+  let uploadMode = false;
+  let selectedFile = null;
+
+  function setStatus(text, mode) {
+    statusText.textContent = text;
+    statusDot.className = 'status-dot' + (mode ? ' ' + mode : '');
+  }
+
+  async function startCamera() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasCamera = devices.some(d => d.kind === 'videoinput');
+      if (!hasCamera) throw new Error('no-camera-device');
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      video.srcObject = stream;
+      setStatus('Camera ready — center your face', 'ready');
+      registerBtn.disabled = false;
+      verifyBtn.disabled = false;
+    } catch (err) {
+      enableUploadMode();
+    }
+  }
+
+  function enableUploadMode() {
+    uploadMode = true;
+    video.style.display = 'none';
+    noCamera.style.display = 'flex';
+    setStatus('No camera — upload a photo to continue', 'no-match');
+    registerBtn.disabled = true;
+    verifyBtn.disabled = true;
+  }
+
+  uploadTrigger.addEventListener('click', () => fileInput.click());
+  previewImg.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    selectedFile = file;
+    const url = URL.createObjectURL(file);
+    previewImg.src = url;
+    previewImg.style.display = 'block';
+    noCamera.style.display = 'none';
+    setStatus('Photo loaded — ready to register or verify', 'ready');
+    registerBtn.disabled = false;
+    verifyBtn.disabled = false;
+  });
+
+  function captureBlob() {
+    if (uploadMode) {
+      return Promise.resolve(selectedFile);
+    }
+    return new Promise((resolve) => {
+      stillCanvas.width = video.videoWidth;
+      stillCanvas.height = video.videoHeight;
+      const ctx = stillCanvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      stillCanvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.92);
+    });
+  }
+
+  function flash() {
+    scanline.classList.remove('active');
+    void scanline.offsetWidth;
+    scanline.classList.add('active');
+  }
+
+  function addLogEntry(text, meta) {
+    entries.unshift({ text, meta, time: new Date() });
+    entries = entries.slice(0, 8);
+    logList.innerHTML = entries.map(e => `
+      <div class="log-entry">
+        <span class="who">${e.text}</span>
+        <span class="meta">${e.meta} · ${e.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+      </div>
+    `).join('');
+  }
+
+  function setButtonsBusy(busy) {
+    registerBtn.disabled = busy;
+    verifyBtn.disabled = busy;
+  }
+
+  registerBtn.addEventListener('click', async () => {
+    const name = nameInput.value.trim();
+    if (!name) {
+      setStatus('Enter a name before registering', 'no-match');
+      nameInput.focus();
+      return;
+    }
+    flash();
+    setButtonsBusy(true);
+    setStatus('Registering…', 'busy');
+    result.className = 'result';
+
+    try {
+      const blob = await captureBlob();
+      const form = new FormData();
+      form.append('file', blob, 'capture.jpg');
+      const res = await fetch(`${API_BASE}/register?name=${encodeURIComponent(name)}`, {
+        method: 'POST',
+        body: form
+      });
+      const data = await res.json();
+
+      if (data.status === 'success') {
+        setStatus('Registered', 'ready');
+        resultName.textContent = `${name} registered`;
+        resultMeta.textContent = 'Face on file for future verification';
+        result.className = 'result show match';
+        addLogEntry(`${name} registered`, 'NEW');
+        nameInput.value = '';
+      } else {
+        setStatus(data.message || 'No face detected', 'no-match');
+        resultName.textContent = 'Registration failed';
+        resultMeta.textContent = data.message || 'No face detected in frame';
+        result.className = 'result show no-match';
+      }
+    } catch (err) {
+      setStatus('Could not reach server', 'no-match');
+      resultName.textContent = 'Connection error';
+      resultMeta.textContent = 'Is the backend running on port 8000?';
+      result.className = 'result show no-match';
+    } finally {
+      setButtonsBusy(false);
+    }
+  });
+
+  verifyBtn.addEventListener('click', async () => {
+    flash();
+    setButtonsBusy(true);
+    setStatus('Scanning…', 'busy');
+    result.className = 'result';
+
+    try {
+      const blob = await captureBlob();
+      const form = new FormData();
+      form.append('file', blob, 'capture.jpg');
+      const res = await fetch(`${API_BASE}/verify`, {
+        method: 'POST',
+        body: form
+      });
+      const data = await res.json();
+
+      if (data.status === 'success' && data.match) {
+        setStatus('Match found', 'match');
+        resultName.textContent = data.name;
+        resultMeta.textContent = `${data.confidence}% confidence`;
+        result.className = 'result show match';
+        addLogEntry(data.name, `${data.confidence}% match`);
+      } else if (data.status === 'success' && !data.match) {
+        setStatus('No match on file', 'no-match');
+        resultName.textContent = 'Unrecognized';
+        resultMeta.textContent = 'No registered face matched this scan';
+        result.className = 'result show no-match';
+        addLogEntry('Unrecognized face', 'NO MATCH');
+      } else {
+        setStatus(data.message || 'No face detected', 'no-match');
+        resultName.textContent = 'Scan failed';
+        resultMeta.textContent = data.message || 'No face detected in frame';
+        result.className = 'result show no-match';
+      }
+    } catch (err) {
+      setStatus('Could not reach server', 'no-match');
+      resultName.textContent = 'Connection error';
+      resultMeta.textContent = 'Is the backend running on port 8000?';
+      result.className = 'result show no-match';
+    } finally {
+      setButtonsBusy(false);
+    }
+  });
+
+  startCamera();
+</script>
+
+</body>
+</html>

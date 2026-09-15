@@ -318,22 +318,31 @@
   #statusText { transition: opacity 0.25s var(--ease); }
 
   .name-field.rise { animation-delay: 0.22s; }
-  .name-field { margin-top: 22px; }
-  .name-field label {
-    display: block; font-size: 12.5px; color: var(--text-dim);
+  .name-field, .save-field { margin-top: 22px; }
+  .name-field label, .save-field label {
+    display: block;
+    font-size: 12.5px; color: var(--text-dim);
     margin-bottom: 8px; font-family: 'IBM Plex Mono', monospace;
   }
-  .name-field input {
-    width: 100%; background: var(--panel); backdrop-filter: blur(12px);
+  .name-field input, .save-field input {
+    width: 100%;
+    background: var(--panel); backdrop-filter: blur(12px);
     border: 1px solid var(--border); border-radius: 10px;
     padding: 13px 15px; color: var(--text);
     font-family: 'Space Grotesk', sans-serif; font-size: 14.5px; outline: none;
     transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease), transform 0.15s var(--ease);
   }
-  .name-field input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(79,209,197,0.12); }
-  .name-field input::placeholder { color: #3E4A5E; }
-  .name-field input.shake { animation: shake 0.4s var(--ease); }
+  .name-field input:focus, .save-field input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(79,209,197,0.12); }
+  .name-field input::placeholder, .save-field input::placeholder { color: #3E4A5E; }
+  .name-field input.shake, .save-field input.shake { animation: shake 0.4s var(--ease); }
   @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+  .save-field {
+    animation: rise 0.4s var(--ease) forwards;
+  }
+  .save-row { display: flex; gap: 10px; }
+  .save-row input { flex: 1; }
+  .save-row .btn-primary { padding: 13px 20px; border-radius: 10px; }
 
   .actions.rise { animation-delay: 0.28s; }
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
@@ -550,16 +559,18 @@
     <span id="statusText">Starting camera…</span>
   </div>
 
-  <div class="name-field rise">
-    <label for="nameInput">Name (for registering)</label>
-    <input type="text" id="nameInput" placeholder="e.g. Nipun">
+  <div class="actions single rise">
+    <button class="btn-primary" id="scanBtn" disabled style="grid-column: 1 / -1;">Start Scan</button>
   </div>
+  <p id="verifyHint" style="margin: 10px 0 0; font-size: 12px; color: var(--text-dim); font-family: 'IBM Plex Mono', monospace;">Camera stays on — you'll be guided through a quick liveness check automatically.</p>
 
-  <div class="actions rise">
-    <button class="btn-secondary" id="registerBtn" disabled>Register face</button>
-    <button class="btn-primary" id="verifyBtn" disabled>Verify face</button>
+  <div class="save-field" id="saveField" style="display:none;">
+    <label for="nameInput">New face — what's your name?</label>
+    <div class="save-row">
+      <input type="text" id="nameInput" placeholder="e.g. Nipun">
+      <button class="btn-primary" id="saveBtn" type="button">Save</button>
+    </div>
   </div>
-  <p id="verifyHint" style="margin: 10px 0 0; font-size: 12px; color: var(--text-dim); font-family: 'IBM Plex Mono', monospace;"></p>
 
   <div class="threshold-field rise">
     <div class="threshold-row">
@@ -608,8 +619,9 @@
   const statusDot = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
   const nameInput = document.getElementById('nameInput');
-  const registerBtn = document.getElementById('registerBtn');
-  const verifyBtn = document.getElementById('verifyBtn');
+  const scanBtn = document.getElementById('scanBtn');
+  const saveField = document.getElementById('saveField');
+  const saveBtn = document.getElementById('saveBtn');
   const result = document.getElementById('result');
   const resultName = document.getElementById('resultName');
   const resultMeta = document.getElementById('resultMeta');
@@ -622,16 +634,41 @@
   let entries = [];
   let uploadMode = false;
   let selectedFile = null;
+  let pendingRegisterBlob = null;
 
   thresholdInput.addEventListener('input', () => {
     thresholdValue.textContent = thresholdInput.value + '%';
   });
 
   function getTolerance() {
-    // Higher strictness % -> lower distance tolerance (stricter match)
     const pct = Number(thresholdInput.value);
     return (1 - pct / 100).toFixed(2);
   }
+
+  function setStatus(text, mode) {
+    statusText.style.opacity = 0;
+    setTimeout(() => {
+      statusText.textContent = text;
+      statusDot.className = 'status-dot' + (mode ? ' ' + mode : '');
+      statusText.style.opacity = 1;
+    }, 120);
+  }
+
+  function spawnRipple(e, btn) {
+    const rect = btn.getBoundingClientRect();
+    const ripple = document.createElement('span');
+    const size = Math.max(rect.width, rect.height) * 1.2;
+    ripple.className = 'ripple';
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+    ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+    btn.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 650);
+  }
+
+  [scanBtn, uploadTrigger, saveBtn].forEach(btn => {
+    btn.addEventListener('click', (e) => spawnRipple(e, btn));
+  });
 
   async function refreshPeopleList() {
     try {
@@ -658,7 +695,7 @@
         btn.addEventListener('click', () => deleteFace(btn.dataset.name, btn));
       });
     } catch (err) {
-      // silently ignore — backend may not be reachable yet
+      // backend may not be reachable yet
     }
   }
 
@@ -681,31 +718,6 @@
     }
   }
 
-  function setStatus(text, mode) {
-    statusText.style.opacity = 0;
-    setTimeout(() => {
-      statusText.textContent = text;
-      statusDot.className = 'status-dot' + (mode ? ' ' + mode : '');
-      statusText.style.opacity = 1;
-    }, 120);
-  }
-
-  function spawnRipple(e, btn) {
-    const rect = btn.getBoundingClientRect();
-    const ripple = document.createElement('span');
-    const size = Math.max(rect.width, rect.height) * 1.2;
-    ripple.className = 'ripple';
-    ripple.style.width = ripple.style.height = size + 'px';
-    ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
-    ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
-    btn.appendChild(ripple);
-    setTimeout(() => ripple.remove(), 650);
-  }
-
-  [registerBtn, verifyBtn, uploadTrigger].forEach(btn => {
-    btn.addEventListener('click', (e) => spawnRipple(e, btn));
-  });
-
   async function startCamera() {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -714,10 +726,9 @@
 
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
       video.srcObject = stream;
-      setStatus('Camera ready — center your face', 'ready');
-      registerBtn.disabled = false;
-      verifyBtn.disabled = false;
-      verifyHint.textContent = 'Verify asks you to blink — this confirms a live face, not a photo.';
+      setStatus('Camera ready — press Start Scan', 'ready');
+      scanBtn.disabled = false;
+      verifyHint.textContent = "Camera stays on — you'll be guided through a quick liveness check automatically.";
     } catch (err) {
       enableUploadMode();
     }
@@ -728,9 +739,8 @@
     video.style.display = 'none';
     noCamera.style.display = 'flex';
     setStatus('No camera — upload a photo to continue', 'no-match');
-    registerBtn.disabled = true;
-    verifyBtn.disabled = true;
-    verifyHint.textContent = 'Uploaded photos are verified without a liveness check.';
+    scanBtn.disabled = true;
+    verifyHint.textContent = 'No camera found — uploaded photos skip the liveness check.';
   }
 
   uploadTrigger.addEventListener('click', () => fileInput.click());
@@ -744,23 +754,9 @@
     previewImg.src = url;
     previewImg.style.display = 'block';
     noCamera.style.display = 'none';
-    setStatus('Photo loaded — ready to register or verify', 'ready');
-    registerBtn.disabled = false;
-    verifyBtn.disabled = false;
+    setStatus('Photo loaded — press Start Scan', 'ready');
+    scanBtn.disabled = false;
   });
-
-  function captureBlob() {
-    if (uploadMode) {
-      return Promise.resolve(selectedFile);
-    }
-    return new Promise((resolve) => {
-      stillCanvas.width = video.videoWidth;
-      stillCanvas.height = video.videoHeight;
-      const ctx = stillCanvas.getContext('2d');
-      ctx.drawImage(video, 0, 0);
-      stillCanvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.92);
-    });
-  }
 
   function captureFrameBlob(quality) {
     return new Promise((resolve) => {
@@ -772,7 +768,7 @@
     });
   }
 
-  async function captureBurst(durationMs, intervalMs) {
+  async function captureFramesFor(durationMs, intervalMs) {
     const frames = [];
     const start = Date.now();
     while (Date.now() - start < durationMs) {
@@ -781,6 +777,15 @@
       await new Promise((r) => setTimeout(r, intervalMs));
     }
     return frames;
+  }
+
+  function showPhase(text) {
+    liveOverlayText.textContent = text;
+    liveOverlay.classList.add('active');
+  }
+
+  function hidePhase() {
+    liveOverlay.classList.remove('active');
   }
 
   function flash() {
@@ -816,14 +821,146 @@
     }
   }
 
-  function setButtonsBusy(busy) {
-    registerBtn.disabled = busy;
-    verifyBtn.disabled = busy;
-  }
-
   function showResult(mode) {
     result.className = 'result show ' + mode;
   }
+
+  function hideSaveField() {
+    saveField.style.display = 'none';
+    nameInput.value = '';
+    pendingRegisterBlob = null;
+  }
+
+  // ---- Upload-mode: single static photo, no liveness (can't blink in a photo) ----
+  async function scanUploadedPhoto() {
+    flash();
+    setButtonLoading(scanBtn, true, 'Checking…');
+    setStatus('Checking photo…', 'busy');
+    result.className = 'result';
+    hideSaveField();
+
+    try {
+      const form = new FormData();
+      form.append('file', selectedFile, 'capture.jpg');
+      const res = await fetch(`${API_BASE}/verify?tolerance=${getTolerance()}`, { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (data.status === 'success' && data.match) {
+        setStatus('Match found', 'match');
+        resultName.textContent = `Welcome back, ${data.name}`;
+        resultMeta.textContent = `${data.confidence}% confidence`;
+        showResult('match');
+        addLogEntry(data.name, `${data.confidence}% match`);
+      } else if (data.status === 'success' && !data.match) {
+        setStatus('New face — enter a name to save', 'no-match');
+        resultName.textContent = 'Not recognized';
+        resultMeta.textContent = 'Enter a name below to save this face';
+        showResult('no-match');
+        pendingRegisterBlob = selectedFile;
+        saveField.style.display = 'block';
+        nameInput.focus();
+      } else {
+        setStatus(data.message || 'No face detected', 'no-match');
+        resultName.textContent = 'Scan failed';
+        resultMeta.textContent = data.message || 'No face detected in frame';
+        showResult('no-match');
+      }
+    } catch (err) {
+      setStatus('Could not reach server', 'no-match');
+      resultName.textContent = 'Connection error';
+      resultMeta.textContent = 'Is the backend running on port 8000?';
+      showResult('no-match');
+    } finally {
+      setButtonLoading(scanBtn, false, 'Start Scan');
+    }
+  }
+
+  // ---- Camera-mode: full guided liveness scan ----
+  async function runGuidedScan() {
+    setButtonLoading(scanBtn, true, 'Scanning…');
+    scanBtn.disabled = true;
+    result.className = 'result';
+    hideSaveField();
+
+    try {
+      showPhase('Look straight at the camera…');
+      setStatus('Hold still and look at the camera', 'busy');
+      const straightFrames = await captureFramesFor(900, 150);
+
+      showPhase('Turn your head to one side…');
+      setStatus('Slowly turn your head', 'busy');
+      const turn1Frames = await captureFramesFor(900, 110);
+
+      showPhase('Now turn to the other side…');
+      const turn2Frames = await captureFramesFor(900, 110);
+
+      showPhase('Blink your eyes…');
+      setStatus('Blink now', 'busy');
+      const blinkFrames = await captureFramesFor(900, 110);
+
+      hidePhase();
+      flash();
+      setStatus('Verifying…', 'busy');
+
+      const motionFrames = [...turn1Frames, ...turn2Frames, ...blinkFrames];
+
+      const form = new FormData();
+      straightFrames.forEach((b, i) => form.append('straight_files', b, `s${i}.jpg`));
+      motionFrames.forEach((b, i) => form.append('motion_files', b, `m${i}.jpg`));
+
+      const res = await fetch(`${API_BASE}/scan-live?tolerance=${getTolerance()}`, { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (data.status === 'error') {
+        setStatus(data.message || 'No face detected', 'no-match');
+        resultName.textContent = 'Scan failed';
+        resultMeta.textContent = data.message || 'No face detected in frame';
+        showResult('no-match');
+        return;
+      }
+
+      if (data.liveness && data.liveness.passed === false) {
+        setStatus('Liveness check incomplete — try again', 'no-match');
+        resultName.textContent = 'Could not confirm a live face';
+        resultMeta.textContent = data.message || 'Follow each prompt fully and try again';
+        showResult('no-match');
+        return;
+      }
+
+      if (data.match) {
+        setStatus('Match found', 'match');
+        resultName.textContent = `Welcome back, ${data.name}`;
+        resultMeta.textContent = `${data.confidence}% confidence`;
+        showResult('match');
+        addLogEntry(data.name, `${data.confidence}% match`);
+      } else {
+        setStatus('New face — enter a name to save', 'no-match');
+        resultName.textContent = 'Not recognized';
+        resultMeta.textContent = 'Enter a name below to save this face';
+        showResult('no-match');
+        pendingRegisterBlob = straightFrames[straightFrames.length - 1] || straightFrames[0];
+        saveField.style.display = 'block';
+        nameInput.focus();
+      }
+    } catch (err) {
+      hidePhase();
+      setStatus('Could not reach server', 'no-match');
+      resultName.textContent = 'Connection error';
+      resultMeta.textContent = 'Is the backend running on port 8000?';
+      showResult('no-match');
+    } finally {
+      scanBtn.disabled = false;
+      setButtonLoading(scanBtn, false, 'Start Scan');
+    }
+  }
+
+  scanBtn.addEventListener('click', () => {
+    if (uploadMode) {
+      scanUploadedPhoto();
+    } else {
+      runGuidedScan();
+    }
+  });
 
   async function submitRegister(name, blob, force) {
     const form = new FormData();
@@ -833,171 +970,63 @@
     return res.json();
   }
 
-  function handleRegisterResult(data, name) {
-    if (data.status === 'success') {
-      setStatus('Registered', 'ready');
-      resultName.textContent = `${name} registered`;
-      resultMeta.textContent = `${data.count} photo${data.count > 1 ? 's' : ''} on file for this person`;
-      showResult('match');
-      addLogEntry(`${name} registered`, 'NEW');
-      nameInput.value = '';
-      refreshPeopleList();
-    } else {
-      setStatus(data.message || 'No face detected', 'no-match');
-      resultName.textContent = 'Registration failed';
-      resultMeta.textContent = data.message || 'No face detected in frame';
-      showResult('no-match');
-    }
-  }
-
-  registerBtn.addEventListener('click', async () => {
+  async function handleSave() {
     const name = nameInput.value.trim();
     if (!name) {
-      setStatus('Enter a name before registering', 'no-match');
       nameInput.classList.remove('shake');
       void nameInput.offsetWidth;
       nameInput.classList.add('shake');
       nameInput.focus();
       return;
     }
-    flash();
-    setButtonsBusy(true);
-    setButtonLoading(registerBtn, true, 'Registering…');
-    setStatus('Registering…', 'busy');
-    result.className = 'result';
+    if (!pendingRegisterBlob) return;
+
+    saveBtn.disabled = true;
+    setButtonLoading(saveBtn, true, 'Saving…');
 
     try {
-      const blob = await captureBlob();
-      const data = await submitRegister(name, blob, false);
+      const data = await submitRegister(name, pendingRegisterBlob, false);
 
       if (data.status === 'duplicate_warning') {
-        const proceed = confirm(`${data.message}. Register as "${name}" anyway?`);
+        const proceed = confirm(`${data.message}. Save as "${name}" anyway?`);
         if (proceed) {
-          const forced = await submitRegister(name, blob, true);
-          handleRegisterResult(forced, name);
-        } else {
-          setStatus('Registration cancelled', 'no-match');
-          result.className = 'result';
+          const forced = await submitRegister(name, pendingRegisterBlob, true);
+          finishSave(forced, name);
         }
       } else {
-        handleRegisterResult(data, name);
+        finishSave(data, name);
       }
     } catch (err) {
       setStatus('Could not reach server', 'no-match');
-      resultName.textContent = 'Connection error';
-      resultMeta.textContent = 'Is the backend running on port 8000?';
-      showResult('no-match');
     } finally {
-      setButtonsBusy(false);
-      setButtonLoading(registerBtn, false, 'Register face');
-    }
-  });
-
-  verifyBtn.addEventListener('click', async () => {
-    if (uploadMode) {
-      await verifySinglePhoto();
-    } else {
-      await verifyWithLiveness();
-    }
-  });
-
-  async function verifySinglePhoto() {
-    flash();
-    setButtonsBusy(true);
-    setButtonLoading(verifyBtn, true, 'Scanning…');
-    setStatus('Scanning…', 'busy');
-    result.className = 'result';
-
-    try {
-      const blob = await captureBlob();
-      const form = new FormData();
-      form.append('file', blob, 'capture.jpg');
-      const res = await fetch(`${API_BASE}/verify?tolerance=${getTolerance()}`, {
-        method: 'POST',
-        body: form
-      });
-      const data = await res.json();
-      applyVerifyResult(data);
-    } catch (err) {
-      setStatus('Could not reach server', 'no-match');
-      resultName.textContent = 'Connection error';
-      resultMeta.textContent = 'Is the backend running on port 8000?';
-      showResult('no-match');
-    } finally {
-      setButtonsBusy(false);
-      setButtonLoading(verifyBtn, false, 'Verify face');
+      saveBtn.disabled = false;
+      setButtonLoading(saveBtn, false, 'Save');
     }
   }
 
-  async function verifyWithLiveness() {
-    setButtonsBusy(true);
-    setButtonLoading(verifyBtn, true, 'Watching…');
-    result.className = 'result';
-
-    liveOverlayText.textContent = 'Blink now…';
-    liveOverlay.classList.add('active');
-    setStatus('Look at the camera and blink', 'busy');
-
-    try {
-      const frames = await captureBurst(2200, 140);
-
-      liveOverlay.classList.remove('active');
-      flash();
-      setStatus('Verifying…', 'busy');
-
-      const form = new FormData();
-      frames.forEach((blob, i) => form.append('files', blob, `frame${i}.jpg`));
-
-      const res = await fetch(`${API_BASE}/verify-live?tolerance=${getTolerance()}`, {
-        method: 'POST',
-        body: form
-      });
-      const data = await res.json();
-
-      if (data.status === 'success' && data.liveness === false) {
-        setStatus('No blink detected — try again', 'no-match');
-        resultName.textContent = 'Liveness check failed';
-        resultMeta.textContent = data.message || 'Blink clearly and try again';
-        showResult('no-match');
-      } else {
-        applyVerifyResult(data);
-      }
-    } catch (err) {
-      liveOverlay.classList.remove('active');
-      setStatus('Could not reach server', 'no-match');
-      resultName.textContent = 'Connection error';
-      resultMeta.textContent = 'Is the backend running on port 8000?';
-      showResult('no-match');
-    } finally {
-      setButtonsBusy(false);
-      setButtonLoading(verifyBtn, false, 'Verify face');
-    }
-  }
-
-  function applyVerifyResult(data) {
-    if (data.status === 'success' && data.match) {
-      setStatus('Match found', 'match');
-      resultName.textContent = data.name;
-      resultMeta.textContent = `${data.confidence}% confidence`;
+  function finishSave(data, name) {
+    if (data.status === 'success') {
+      setStatus('Saved', 'ready');
+      resultName.textContent = `${name} saved`;
+      resultMeta.textContent = 'This face is now on file';
       showResult('match');
-      addLogEntry(data.name, `${data.confidence}% match`);
-    } else if (data.status === 'success' && !data.match) {
-      setStatus('No match on file', 'no-match');
-      resultName.textContent = 'Unrecognized';
-      resultMeta.textContent = 'No registered face matched this scan';
-      showResult('no-match');
-      addLogEntry('Unrecognized face', 'NO MATCH');
+      addLogEntry(`${name} registered`, 'NEW');
+      hideSaveField();
+      refreshPeopleList();
     } else {
-      setStatus(data.message || 'No face detected', 'no-match');
-      resultName.textContent = 'Scan failed';
-      resultMeta.textContent = data.message || 'No face detected in frame';
-      showResult('no-match');
+      setStatus(data.message || 'Could not save', 'no-match');
     }
   }
+
+  saveBtn.addEventListener('click', handleSave);
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleSave();
+  });
 
   startCamera();
   refreshPeopleList();
 </script>
+
 
 </body>
 </html>

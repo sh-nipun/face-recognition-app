@@ -21,14 +21,35 @@ def eye_aspect_ratio(eye_points):
     """6-point eye landmark theke Eye Aspect Ratio (EAR) calculate kore.
     Chokh khola thakle EAR beshi, bondho thakle EAR kome jay."""
     eye = np.array(eye_points)
-    # Vertical distances
     v1 = np.linalg.norm(eye[1] - eye[5])
     v2 = np.linalg.norm(eye[2] - eye[4])
-    # Horizontal distance
     h = np.linalg.norm(eye[0] - eye[3])
     if h == 0:
         return 0
     return (v1 + v2) / (2.0 * h)
+
+
+def face_metrics(landmarks):
+    """Ekta frame-er landmark theke eye-openness (EAR) ar head-turn offset ber kore."""
+    left_eye = np.array(landmarks["left_eye"])
+    right_eye = np.array(landmarks["right_eye"])
+
+    left_ear = eye_aspect_ratio(landmarks["left_eye"])
+    right_ear = eye_aspect_ratio(landmarks["right_eye"])
+    avg_ear = (left_ear + right_ear) / 2.0
+
+    left_center = left_eye.mean(axis=0)
+    right_center = right_eye.mean(axis=0)
+    eye_mid = (left_center + right_center) / 2.0
+    inter_eye_dist = np.linalg.norm(left_center - right_center)
+
+    nose_points = landmarks.get("nose_tip") or landmarks.get("nose_bridge")
+    offset = 0.0
+    if nose_points and inter_eye_dist > 0:
+        nose = np.array(nose_points).mean(axis=0)
+        offset = float((nose[0] - eye_mid[0]) / inter_eye_dist)
+
+    return avg_ear, offset
 
 
 @app.post("/register")
@@ -180,6 +201,100 @@ async def verify_live(files: List[UploadFile] = File(...), tolerance: float = 0.
         }
 
     return {"status": "success", "liveness": True, "match": False, "name": None}
+
+
+@app.post("/scan-live")
+async def scan_live(
+    straight_files: List[UploadFile] = File(...),
+    motion_files: List[UploadFile] = File(...),
+    tolerance: float = 0.5
+):
+    """Puro guided scan: 'straight' frame-gula theke best clear face-encoding ber kore,
+    'motion' frame-gula (turn-left, turn-right, blink shomoy tola) diye liveness confirm kore,
+    tarpor known_faces-er sathe automatic match kore."""
+
+    OPEN_THRESHOLD = 0.23
+    CLOSED_THRESHOLD = 0.19
+    TURN_THRESHOLD = 0.13
+
+    # --- Motion frames theke liveness (blink + left/right turn) ---
+    ear_values = []
+    offset_values = []
+
+    for f in motion_files:
+        image = face_recognition.load_image_file(f.file)
+        landmarks_list = face_recognition.face_landmarks(image)
+        if not landmarks_list:
+            continue
+        landmarks = landmarks_list[0]
+        if "left_eye" not in landmarks or "right_eye" not in landmarks:
+            continue
+        ear, offset = face_metrics(landmarks)
+        ear_values.append(ear)
+        offset_values.append(offset)
+
+    blinked = len(ear_values) > 0 and min(ear_values) < CLOSED_THRESHOLD and max(ear_values) > OPEN_THRESHOLD
+    turned_left = any(o < -TURN_THRESHOLD for o in offset_values)
+    turned_right = any(o > TURN_THRESHOLD for o in offset_values)
+    liveness_passed = blinked and turned_left and turned_right
+
+    # --- Straight frames theke best (clearest, chokh khola) encoding ber kora ---
+    best_encoding = None
+    best_ear = -1
+
+    for f in straight_files:
+        image = face_recognition.load_image_file(f.file)
+        landmarks_list = face_recognition.face_landmarks(image)
+        encodings = face_recognition.face_encodings(image)
+        if not landmarks_list or not encodings:
+            continue
+        landmarks = landmarks_list[0]
+        if "left_eye" not in landmarks or "right_eye" not in landmarks:
+            continue
+        ear, _ = face_metrics(landmarks)
+        if ear > best_ear:
+            best_ear = ear
+            best_encoding = encodings[0]
+
+    if best_encoding is None:
+        return {
+            "status": "error",
+            "message": "Face clearly dekha jayni. Aro kache ashun ar alo thik korun."
+        }
+
+    if not liveness_passed:
+        return {
+            "status": "success",
+            "liveness": {"blinked": blinked, "turned_left": turned_left, "turned_right": turned_right, "passed": False},
+            "message": "Liveness check complete hoyni. Puro instruction follow kore abar try korun."
+        }
+
+    # --- Match kora ---
+    best_name = None
+    best_distance = None
+    for name, encoding_list in known_faces.items():
+        distances = face_recognition.face_distance(encoding_list, best_encoding)
+        d = min(distances)
+        if best_distance is None or d < best_distance:
+            best_distance = d
+            best_name = name
+
+    if best_distance is not None and best_distance <= tolerance:
+        confidence = round((1 - best_distance) * 100, 2)
+        return {
+            "status": "success",
+            "liveness": {"blinked": True, "turned_left": True, "turned_right": True, "passed": True},
+            "match": True,
+            "name": best_name,
+            "confidence": confidence
+        }
+
+    return {
+        "status": "success",
+        "liveness": {"blinked": True, "turned_left": True, "turned_right": True, "passed": True},
+        "match": False,
+        "name": None
+    }
 
 
 @app.get("/")

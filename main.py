@@ -233,10 +233,10 @@ async def scan_live(
         ear_values.append(ear)
         offset_values.append(offset)
 
-    blinked = len(ear_values) > 0 and min(ear_values) < CLOSED_THRESHOLD and max(ear_values) > OPEN_THRESHOLD
-    turned_left = any(o < -TURN_THRESHOLD for o in offset_values)
-    turned_right = any(o > TURN_THRESHOLD for o in offset_values)
-    liveness_passed = blinked and turned_left and turned_right
+    blinked = bool(len(ear_values) > 0 and min(ear_values) < CLOSED_THRESHOLD and max(ear_values) > OPEN_THRESHOLD)
+    turned_left = bool(any(o < -TURN_THRESHOLD for o in offset_values))
+    turned_right = bool(any(o > TURN_THRESHOLD for o in offset_values))
+    liveness_passed = bool(blinked and turned_left and turned_right)
 
     # --- Straight frames theke best (clearest, chokh khola) encoding ber kora ---
     best_encoding = None

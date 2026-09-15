@@ -17,17 +17,32 @@ known_faces = {}
 
 
 @app.post("/register")
-async def register_face(name: str, file: UploadFile = File(...)):
+async def register_face(name: str, file: UploadFile = File(...), force: bool = False):
     image = face_recognition.load_image_file(file.file)
     encodings = face_recognition.face_encodings(image)
 
     if len(encodings) == 0:
         return {"status": "error", "message": "Kono face detect hoyni"}
 
+    new_encoding = encodings[0]
+
+    # Duplicate check: ei face ki onno kono name-e already registered?
+    if not force:
+        for existing_name, encoding_list in known_faces.items():
+            if existing_name == name:
+                continue
+            distances = face_recognition.face_distance(encoding_list, new_encoding)
+            if len(distances) > 0 and min(distances) <= 0.5:
+                return {
+                    "status": "duplicate_warning",
+                    "message": f"Ei face ta already '{existing_name}' name-e registered ache",
+                    "matched_name": existing_name
+                }
+
     if name not in known_faces:
         known_faces[name] = []
 
-    known_faces[name].append(encodings[0])
+    known_faces[name].append(new_encoding)
     count = len(known_faces[name])
 
     return {
@@ -38,7 +53,7 @@ async def register_face(name: str, file: UploadFile = File(...)):
 
 
 @app.post("/verify")
-async def verify_face(file: UploadFile = File(...)):
+async def verify_face(file: UploadFile = File(...), tolerance: float = 0.5):
     image = face_recognition.load_image_file(file.file)
     encodings = face_recognition.face_encodings(image)
 
@@ -50,7 +65,6 @@ async def verify_face(file: UploadFile = File(...)):
     best_name = None
     best_distance = None
 
-    # Prottek registered person-er shob photo-r sathe compare kore, sবচেয়ে kache-r ta khuje ber kora
     for name, encoding_list in known_faces.items():
         distances = face_recognition.face_distance(encoding_list, unknown_encoding)
         min_distance = min(distances)
@@ -58,11 +72,26 @@ async def verify_face(file: UploadFile = File(...)):
             best_distance = min_distance
             best_name = name
 
-    if best_distance is not None and best_distance <= 0.5:
+    if best_distance is not None and best_distance <= tolerance:
         confidence = round((1 - best_distance) * 100, 2)
         return {"status": "success", "match": True, "name": best_name, "confidence": confidence}
 
     return {"status": "success", "match": False, "name": None}
+
+
+@app.get("/list")
+async def list_faces():
+    people = [{"name": name, "count": len(encodings)} for name, encodings in known_faces.items()]
+    return {"status": "success", "people": people}
+
+
+@app.delete("/delete")
+async def delete_face(name: str):
+    if name not in known_faces:
+        return {"status": "error", "message": f"'{name}' registered nei"}
+
+    del known_faces[name]
+    return {"status": "success", "message": f"{name} remove kora hoyeche"}
 
 
 @app.get("/")

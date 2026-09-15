@@ -59,7 +59,7 @@ Two things need to run at the same time: the **backend** (in a terminal) and the
 
 ### 1. Open the project in VS Code
 Open the `face-recognition-app` folder in VS Code (`File → Open Folder`, or right-click the folder → "Open with Code").
-
+#TODO:
 ### 2. Open a terminal
 `Terminal → New Terminal`, or press `` Ctrl+` ``.
 

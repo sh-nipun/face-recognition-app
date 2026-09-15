@@ -352,10 +352,91 @@
   .result-name { font-size: 16.5px; font-weight: 600; margin: 0 0 4px; }
   .result-meta { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-dim); margin: 0; }
 
-  .log-section.rise { animation-delay: 0.34s; }
+  /* Threshold slider */
+  .threshold-field.rise { animation-delay: 0.25s; }
+  .threshold-field { margin-top: 20px; }
+  .threshold-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .threshold-field label {
+    font-size: 12.5px; color: var(--text-dim); font-family: 'IBM Plex Mono', monospace;
+  }
+  .threshold-value {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--teal); font-weight: 500;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--teal);
+    box-shadow: 0 0 8px rgba(79,209,197,0.6);
+    cursor: pointer;
+    transition: transform 0.15s var(--ease-spring);
+  }
+  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px; border: none; border-radius: 50%;
+    background: var(--teal);
+    box-shadow: 0 0 8px rgba(79,209,197,0.6);
+    cursor: pointer;
+  }
+
+  /* Registered people list */
+  .people-section.rise { animation-delay: 0.30s; }
+  .people-section {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid var(--border);
+  }
+  .people-title {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-dim);
+    margin: 0 0 12px; letter-spacing: 0.03em;
+  }
+  .people-list { display: flex; flex-direction: column; gap: 8px; }
+  .person-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    animation: logIn 0.35s var(--ease) both;
+    transition: border-color 0.2s var(--ease);
+  }
+  .person-row:hover { border-color: var(--border-hover); }
+  .person-info { display: flex; flex-direction: column; gap: 2px; }
+  .person-name { font-size: 13.5px; font-weight: 500; }
+  .person-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); }
+  .delete-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 7px 12px;
+    font-size: 12px;
+    border-radius: 7px;
+  }
+  .delete-btn:hover:not(:disabled) {
+    border-color: rgba(245,167,92,0.5);
+    color: var(--amber);
+    background: var(--amber-soft);
+  }
+  .people-empty {
+    color: var(--text-dim); font-size: 13px; font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .log-section.rise { animation-delay: 0.36s; }
   .log-section {
-    margin-top: 40px;
-    padding-top: 24px;
+    margin-top: 28px;
+    padding-top: 22px;
     border-top: 1px solid var(--border);
     background-image: linear-gradient(90deg, var(--teal), var(--violet), transparent);
     background-repeat: no-repeat;
@@ -442,9 +523,24 @@
     <button class="btn-primary" id="verifyBtn" disabled>Verify face</button>
   </div>
 
+  <div class="threshold-field rise">
+    <div class="threshold-row">
+      <label for="thresholdInput">Match strictness</label>
+      <span class="threshold-value" id="thresholdValue">50%</span>
+    </div>
+    <input type="range" id="thresholdInput" min="30" max="70" value="50" step="1">
+  </div>
+
   <div class="result" id="result">
     <p class="result-name" id="resultName"></p>
     <p class="result-meta" id="resultMeta"></p>
+  </div>
+
+  <div class="people-section rise">
+    <p class="people-title">REGISTERED FACES</p>
+    <div class="people-list" id="peopleList">
+      <p class="people-empty">No one registered yet.</p>
+    </div>
   </div>
 
   <div class="log-section rise">
@@ -478,10 +574,71 @@
   const resultName = document.getElementById('resultName');
   const resultMeta = document.getElementById('resultMeta');
   const logList = document.getElementById('logList');
+  const thresholdInput = document.getElementById('thresholdInput');
+  const thresholdValue = document.getElementById('thresholdValue');
+  const peopleList = document.getElementById('peopleList');
 
   let entries = [];
   let uploadMode = false;
   let selectedFile = null;
+
+  thresholdInput.addEventListener('input', () => {
+    thresholdValue.textContent = thresholdInput.value + '%';
+  });
+
+  function getTolerance() {
+    // Higher strictness % -> lower distance tolerance (stricter match)
+    const pct = Number(thresholdInput.value);
+    return (1 - pct / 100).toFixed(2);
+  }
+
+  async function refreshPeopleList() {
+    try {
+      const res = await fetch(`${API_BASE}/list`);
+      const data = await res.json();
+      const people = data.people || [];
+
+      if (people.length === 0) {
+        peopleList.innerHTML = '<p class="people-empty">No one registered yet.</p>';
+        return;
+      }
+
+      peopleList.innerHTML = people.map(p => `
+        <div class="person-row">
+          <div class="person-info">
+            <span class="person-name">${p.name}</span>
+            <span class="person-count">${p.count} photo${p.count > 1 ? 's' : ''} on file</span>
+          </div>
+          <button class="delete-btn" data-name="${p.name}">Remove</button>
+        </div>
+      `).join('');
+
+      peopleList.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => deleteFace(btn.dataset.name, btn));
+      });
+    } catch (err) {
+      // silently ignore — backend may not be reachable yet
+    }
+  }
+
+  async function deleteFace(name, btn) {
+    const confirmed = confirm(`Remove all registered photos for "${name}"?`);
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Removing…';
+    try {
+      const res = await fetch(`${API_BASE}/delete?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.status === 'success') {
+        addLogEntry(`${name} removed`, 'DELETED');
+      }
+      refreshPeopleList();
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Remove';
+    }
+  }
 
   function setStatus(text, mode) {
     statusText.style.opacity = 0;
@@ -604,6 +761,31 @@
     result.className = 'result show ' + mode;
   }
 
+  async function submitRegister(name, blob, force) {
+    const form = new FormData();
+    form.append('file', blob, 'capture.jpg');
+    const url = `${API_BASE}/register?name=${encodeURIComponent(name)}${force ? '&force=true' : ''}`;
+    const res = await fetch(url, { method: 'POST', body: form });
+    return res.json();
+  }
+
+  function handleRegisterResult(data, name) {
+    if (data.status === 'success') {
+      setStatus('Registered', 'ready');
+      resultName.textContent = `${name} registered`;
+      resultMeta.textContent = `${data.count} photo${data.count > 1 ? 's' : ''} on file for this person`;
+      showResult('match');
+      addLogEntry(`${name} registered`, 'NEW');
+      nameInput.value = '';
+      refreshPeopleList();
+    } else {
+      setStatus(data.message || 'No face detected', 'no-match');
+      resultName.textContent = 'Registration failed';
+      resultMeta.textContent = data.message || 'No face detected in frame';
+      showResult('no-match');
+    }
+  }
+
   registerBtn.addEventListener('click', async () => {
     const name = nameInput.value.trim();
     if (!name) {
@@ -622,26 +804,19 @@
 
     try {
       const blob = await captureBlob();
-      const form = new FormData();
-      form.append('file', blob, 'capture.jpg');
-      const res = await fetch(`${API_BASE}/register?name=${encodeURIComponent(name)}`, {
-        method: 'POST',
-        body: form
-      });
-      const data = await res.json();
+      const data = await submitRegister(name, blob, false);
 
-      if (data.status === 'success') {
-        setStatus('Registered', 'ready');
-        resultName.textContent = `${name} registered`;
-        resultMeta.textContent = 'Face on file for future verification';
-        showResult('match');
-        addLogEntry(`${name} registered`, 'NEW');
-        nameInput.value = '';
+      if (data.status === 'duplicate_warning') {
+        const proceed = confirm(`${data.message}. Register as "${name}" anyway?`);
+        if (proceed) {
+          const forced = await submitRegister(name, blob, true);
+          handleRegisterResult(forced, name);
+        } else {
+          setStatus('Registration cancelled', 'no-match');
+          result.className = 'result';
+        }
       } else {
-        setStatus(data.message || 'No face detected', 'no-match');
-        resultName.textContent = 'Registration failed';
-        resultMeta.textContent = data.message || 'No face detected in frame';
-        showResult('no-match');
+        handleRegisterResult(data, name);
       }
     } catch (err) {
       setStatus('Could not reach server', 'no-match');
@@ -665,7 +840,7 @@
       const blob = await captureBlob();
       const form = new FormData();
       form.append('file', blob, 'capture.jpg');
-      const res = await fetch(`${API_BASE}/verify`, {
+      const res = await fetch(`${API_BASE}/verify?tolerance=${getTolerance()}`, {
         method: 'POST',
         body: form
       });
@@ -701,6 +876,7 @@
   });
 
   startCamera();
+  refreshPeopleList();
 </script>
 
 </body>

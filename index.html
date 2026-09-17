@@ -885,18 +885,18 @@
     try {
       showPhase('Look straight at the camera…');
       setStatus('Hold still and look at the camera', 'busy');
-      const straightFrames = await captureFramesFor(900, 150);
+      const straightFrames = await captureFramesFor(1000, 130);
 
       showPhase('Turn your head to one side…');
       setStatus('Slowly turn your head', 'busy');
-      const turn1Frames = await captureFramesFor(900, 110);
+      const turn1Frames = await captureFramesFor(1300, 90);
 
       showPhase('Now turn to the other side…');
-      const turn2Frames = await captureFramesFor(900, 110);
+      const turn2Frames = await captureFramesFor(1300, 90);
 
       showPhase('Blink your eyes…');
       setStatus('Blink now', 'busy');
-      const blinkFrames = await captureFramesFor(900, 110);
+      const blinkFrames = await captureFramesFor(1300, 90);
 
       hidePhase();
       flash();
@@ -920,9 +920,16 @@
       }
 
       if (data.liveness && data.liveness.passed === false) {
+        const l = data.liveness;
+        const missing = [];
+        if (!l.blinked) missing.push('blink');
+        if (!l.turned_left) missing.push('first head-turn');
+        if (!l.turned_right) missing.push('second head-turn');
         setStatus('Liveness check incomplete — try again', 'no-match');
         resultName.textContent = 'Could not confirm a live face';
-        resultMeta.textContent = data.message || 'Follow each prompt fully and try again';
+        resultMeta.textContent = missing.length
+          ? `Not detected: ${missing.join(', ')}. Move more clearly and try again.`
+          : (data.message || 'Follow each prompt fully and try again');
         showResult('no-match');
         return;
       }

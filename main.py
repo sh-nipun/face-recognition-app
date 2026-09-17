@@ -30,7 +30,9 @@ def eye_aspect_ratio(eye_points):
 
 
 def face_metrics(landmarks):
-    """Ekta frame-er landmark theke eye-openness (EAR) ar head-turn offset ber kore."""
+    """Ekta frame-er landmark theke eye-openness (EAR) ar nose-offset vector ber kore.
+    Offset-ke 2D vector hisebe rakha hoy jate camera rotate thakleo (jemon phone
+    landscape/portrait) movement thik moto dhora jay."""
     left_eye = np.array(landmarks["left_eye"])
     right_eye = np.array(landmarks["right_eye"])
 
@@ -44,12 +46,13 @@ def face_metrics(landmarks):
     inter_eye_dist = np.linalg.norm(left_center - right_center)
 
     nose_points = landmarks.get("nose_tip") or landmarks.get("nose_bridge")
-    offset = 0.0
+    offset_magnitude = 0.0
     if nose_points and inter_eye_dist > 0:
         nose = np.array(nose_points).mean(axis=0)
-        offset = float((nose[0] - eye_mid[0]) / inter_eye_dist)
+        diff = nose - eye_mid
+        offset_magnitude = float(np.linalg.norm(diff) / inter_eye_dist)
 
-    return avg_ear, offset
+    return avg_ear, offset_magnitude
 
 
 @app.post("/register")
@@ -210,33 +213,40 @@ async def scan_live(
     tolerance: float = 0.5
 ):
     """Puro guided scan: 'straight' frame-gula theke best clear face-encoding ber kore,
-    'motion' frame-gula (turn-left, turn-right, blink shomoy tola) diye liveness confirm kore,
+    'motion' frame-gula (turn + blink shomoy tola shob frame ekshathe) diye liveness
+    confirm kore — matha noticeable-bhabe shore geche kina (rotation-agnostic magnitude,
+    exact direction dhora hoy na) ar chokh bondho-khola hoyeche kina, dutai check kore,
     tarpor known_faces-er sathe automatic match kore."""
 
     OPEN_THRESHOLD = 0.23
-    CLOSED_THRESHOLD = 0.19
-    TURN_THRESHOLD = 0.13
+    CLOSED_THRESHOLD = 0.20
+    MOVE_THRESHOLD = 0.05
 
-    # --- Motion frames theke liveness (blink + left/right turn) ---
-    ear_values = []
-    offset_values = []
+    def frame_metrics(files):
+        ears, offsets = [], []
+        for f in files:
+            image = face_recognition.load_image_file(f.file)
+            landmarks_list = face_recognition.face_landmarks(image)
+            if not landmarks_list:
+                continue
+            landmarks = landmarks_list[0]
+            if "left_eye" not in landmarks or "right_eye" not in landmarks:
+                continue
+            ear, offset = face_metrics(landmarks)
+            ears.append(ear)
+            offsets.append(offset)
+        return ears, offsets
 
-    for f in motion_files:
-        image = face_recognition.load_image_file(f.file)
-        landmarks_list = face_recognition.face_landmarks(image)
-        if not landmarks_list:
-            continue
-        landmarks = landmarks_list[0]
-        if "left_eye" not in landmarks or "right_eye" not in landmarks:
-            continue
-        ear, offset = face_metrics(landmarks)
-        ear_values.append(ear)
-        offset_values.append(offset)
+    straight_ears, straight_offsets = frame_metrics(straight_files)
+    motion_ears, motion_offsets = frame_metrics(motion_files)
 
-    blinked = bool(len(ear_values) > 0 and min(ear_values) < CLOSED_THRESHOLD and max(ear_values) > OPEN_THRESHOLD)
-    turned_left = bool(any(o < -TURN_THRESHOLD for o in offset_values))
-    turned_right = bool(any(o > TURN_THRESHOLD for o in offset_values))
-    liveness_passed = bool(blinked and turned_left and turned_right)
+    all_ears = straight_ears + motion_ears
+    all_offsets = straight_offsets + motion_offsets
+
+    blinked = bool(all_ears and min(all_ears) < CLOSED_THRESHOLD and max(all_ears) > OPEN_THRESHOLD)
+    moved = bool(all_offsets and (max(all_offsets) - min(all_offsets)) > MOVE_THRESHOLD)
+
+    liveness_passed = bool(blinked and moved)
 
     # --- Straight frames theke best (clearest, chokh khola) encoding ber kora ---
     best_encoding = None
@@ -265,7 +275,7 @@ async def scan_live(
     if not liveness_passed:
         return {
             "status": "success",
-            "liveness": {"blinked": blinked, "turned_left": turned_left, "turned_right": turned_right, "passed": False},
+            "liveness": {"blinked": blinked, "turned_left": moved, "turned_right": moved, "passed": False},
             "message": "Liveness check complete hoyni. Puro instruction follow kore abar try korun."
         }
 

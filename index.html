@@ -894,9 +894,9 @@
       showPhase('Now turn to the other side…');
       const turn2Frames = await captureFramesFor(1300, 90);
 
-      showPhase('Blink your eyes…');
-      setStatus('Blink now', 'busy');
-      const blinkFrames = await captureFramesFor(1300, 90);
+      showPhase('Blink your eyes a couple of times…');
+      setStatus('Blink slowly, a couple of times', 'busy');
+      const blinkFrames = await captureFramesFor(1800, 80);
 
       hidePhase();
       flash();

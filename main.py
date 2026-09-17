@@ -218,9 +218,8 @@ async def scan_live(
     exact direction dhora hoy na) ar chokh bondho-khola hoyeche kina, dutai check kore,
     tarpor known_faces-er sathe automatic match kore."""
 
-    OPEN_THRESHOLD = 0.23
-    CLOSED_THRESHOLD = 0.20
     MOVE_THRESHOLD = 0.05
+    EAR_RANGE_THRESHOLD = 0.045
 
     def frame_metrics(files):
         ears, offsets = [], []
@@ -243,7 +242,7 @@ async def scan_live(
     all_ears = straight_ears + motion_ears
     all_offsets = straight_offsets + motion_offsets
 
-    blinked = bool(all_ears and min(all_ears) < CLOSED_THRESHOLD and max(all_ears) > OPEN_THRESHOLD)
+    blinked = bool(all_ears and (max(all_ears) - min(all_ears)) > EAR_RANGE_THRESHOLD)
     moved = bool(all_offsets and (max(all_offsets) - min(all_offsets)) > MOVE_THRESHOLD)
 
     liveness_passed = bool(blinked and moved)

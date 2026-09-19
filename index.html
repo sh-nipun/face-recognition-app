@@ -875,79 +875,171 @@
     }
   }
 
-  // ---- Camera-mode: full guided liveness scan ----
+  // ---- Camera-mode: real-time guided liveness scan (poll after every frame) ----
+
+  async function checkPose() {
+    const blob = await captureFrameBlob(0.7);
+    if (!blob) return null;
+    try {
+      const form = new FormData();
+      form.append('file', blob, 'f.jpg');
+      const res = await fetch(`${API_BASE}/pose-check`, { method: 'POST', body: form });
+      const data = await res.json();
+      return { ...data, blob };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Repeatedly checks pose until predicate(metrics) is true, or timeoutMs runs out.
+  // Returns the confirming metrics object, or null on timeout.
+  async function waitUntil(predicate, timeoutMs, intervalMs) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const metrics = await checkPose();
+      if (metrics && metrics.found && predicate(metrics)) {
+        return metrics;
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
+  }
+
   async function runGuidedScan() {
     setButtonLoading(scanBtn, true, 'Scanning…');
     scanBtn.disabled = true;
     result.className = 'result';
     hideSaveField();
 
+    const TURN_THRESHOLD = 0.045;
+    const EAR_RANGE_THRESHOLD = 0.045;
+    const STEP_TIMEOUT = 7000;
+
     try {
+      // Step 0: get a stable baseline while looking straight
       showPhase('Look straight at the camera…');
       setStatus('Hold still and look at the camera', 'busy');
-      const straightFrames = await captureFramesFor(1000, 130);
 
-      showPhase('Turn your head to one side…');
-      setStatus('Slowly turn your head', 'busy');
-      const turn1Frames = await captureFramesFor(1300, 90);
+      let baselineOffset = 0;
+      let bestStraightBlob = null;
+      let bestStraightEar = -1;
+      const baselineStart = Date.now();
+      while (Date.now() - baselineStart < 1000) {
+        const m = await checkPose();
+        if (m && m.found) {
+          baselineOffset = m.offset;
+          if (m.ear > bestStraightEar) {
+            bestStraightEar = m.ear;
+            bestStraightBlob = m.blob;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 150));
+      }
 
-      showPhase('Now turn to the other side…');
-      const turn2Frames = await captureFramesFor(1300, 90);
+      if (!bestStraightBlob) {
+        hidePhase();
+        setStatus('No face detected', 'no-match');
+        resultName.textContent = 'Scan failed';
+        resultMeta.textContent = 'Center your face in the frame and try again';
+        showResult('no-match');
+        return;
+      }
 
-      showPhase('Blink your eyes a couple of times…');
-      setStatus('Blink slowly, a couple of times', 'busy');
-      const blinkFrames = await captureFramesFor(1800, 80);
+      // Step 1: turn one way — confirmed the instant offset swings far enough from baseline
+      showPhase('Turn your head to the right…');
+      setStatus('Turn your head to the right', 'busy');
+      const turn1 = await waitUntil(
+        (m) => Math.abs(m.offset - baselineOffset) > TURN_THRESHOLD,
+        STEP_TIMEOUT, 150
+      );
+      if (!turn1) {
+        hidePhase();
+        setStatus('Right turn not detected', 'no-match');
+        resultName.textContent = 'Liveness check failed';
+        resultMeta.textContent = 'Turn your head further next time and try again';
+        showResult('no-match');
+        return;
+      }
+      const turn1Sign = Math.sign(turn1.offset - baselineOffset);
+      showPhase('Right turn detected ✓');
+      await new Promise((r) => setTimeout(r, 350));
 
+      // Step 2: turn the other way — must swing to the OPPOSITE side of baseline
+      showPhase('Now turn your head to the left…');
+      setStatus('Now turn your head to the left', 'busy');
+      const turn2 = await waitUntil(
+        (m) => Math.sign(m.offset - baselineOffset) === -turn1Sign && Math.abs(m.offset - baselineOffset) > TURN_THRESHOLD,
+        STEP_TIMEOUT, 150
+      );
+      if (!turn2) {
+        hidePhase();
+        setStatus('Left turn not detected', 'no-match');
+        resultName.textContent = 'Liveness check failed';
+        resultMeta.textContent = 'Turn to the opposite side next time and try again';
+        showResult('no-match');
+        return;
+      }
+      showPhase('Left turn detected ✓');
+      await new Promise((r) => setTimeout(r, 350));
+
+      // Step 3: blink — track a rolling EAR window, confirm on a clear dip-and-rise
+      showPhase('Now blink your eyes…');
+      setStatus('Blink now', 'busy');
+      const earWindow = [];
+      const blinkStart = Date.now();
+      let blinked = false;
+      while (Date.now() - blinkStart < STEP_TIMEOUT) {
+        const m = await checkPose();
+        if (m && m.found) {
+          earWindow.push(m.ear);
+          if (earWindow.length > 10) earWindow.shift();
+          if (earWindow.length >= 4 && (Math.max(...earWindow) - Math.min(...earWindow)) > EAR_RANGE_THRESHOLD) {
+            blinked = true;
+            break;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 90));
+      }
+      if (!blinked) {
+        hidePhase();
+        setStatus('Blink not detected', 'no-match');
+        resultName.textContent = 'Liveness check failed';
+        resultMeta.textContent = 'Blink clearly a couple of times and try again';
+        showResult('no-match');
+        return;
+      }
+      showPhase('Blink detected ✓');
+      await new Promise((r) => setTimeout(r, 350));
+
+      // All steps confirmed — run recognition on the clearest straight-on frame
       hidePhase();
       flash();
       setStatus('Verifying…', 'busy');
 
-      const motionFrames = [...turn1Frames, ...turn2Frames, ...blinkFrames];
-
       const form = new FormData();
-      straightFrames.forEach((b, i) => form.append('straight_files', b, `s${i}.jpg`));
-      motionFrames.forEach((b, i) => form.append('motion_files', b, `m${i}.jpg`));
-
-      const res = await fetch(`${API_BASE}/scan-live?tolerance=${getTolerance()}`, { method: 'POST', body: form });
+      form.append('file', bestStraightBlob, 'capture.jpg');
+      const res = await fetch(`${API_BASE}/verify?tolerance=${getTolerance()}`, { method: 'POST', body: form });
       const data = await res.json();
 
-      if (data.status === 'error') {
-        setStatus(data.message || 'No face detected', 'no-match');
-        resultName.textContent = 'Scan failed';
-        resultMeta.textContent = data.message || 'No face detected in frame';
-        showResult('no-match');
-        return;
-      }
-
-      if (data.liveness && data.liveness.passed === false) {
-        const l = data.liveness;
-        const missing = [];
-        if (!l.blinked) missing.push('blink');
-        if (!l.turned_left) missing.push('first head-turn');
-        if (!l.turned_right) missing.push('second head-turn');
-        setStatus('Liveness check incomplete — try again', 'no-match');
-        resultName.textContent = 'Could not confirm a live face';
-        resultMeta.textContent = missing.length
-          ? `Not detected: ${missing.join(', ')}. Move more clearly and try again.`
-          : (data.message || 'Follow each prompt fully and try again');
-        showResult('no-match');
-        return;
-      }
-
-      if (data.match) {
+      if (data.status === 'success' && data.match) {
         setStatus('Match found', 'match');
         resultName.textContent = `Welcome back, ${data.name}`;
         resultMeta.textContent = `${data.confidence}% confidence`;
         showResult('match');
         addLogEntry(data.name, `${data.confidence}% match`);
-      } else {
+      } else if (data.status === 'success' && !data.match) {
         setStatus('New face — enter a name to save', 'no-match');
         resultName.textContent = 'Not recognized';
         resultMeta.textContent = 'Enter a name below to save this face';
         showResult('no-match');
-        pendingRegisterBlob = straightFrames[straightFrames.length - 1] || straightFrames[0];
+        pendingRegisterBlob = bestStraightBlob;
         saveField.style.display = 'block';
         nameInput.focus();
+      } else {
+        setStatus(data.message || 'No face detected', 'no-match');
+        resultName.textContent = 'Scan failed';
+        resultMeta.textContent = data.message || 'No face detected in frame';
+        showResult('no-match');
       }
     } catch (err) {
       hidePhase();

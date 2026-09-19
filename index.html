@@ -893,16 +893,37 @@
 
   // Repeatedly checks pose until predicate(metrics) is true, or timeoutMs runs out.
   // Returns the confirming metrics object, or null on timeout.
-  async function waitUntil(predicate, timeoutMs, intervalMs) {
+  async function waitUntil(predicate, timeoutMs, intervalMs, requiredHits, onTick) {
+    requiredHits = requiredHits || 1;
+    let hits = 0;
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       const metrics = await checkPose();
+      if (onTick) onTick(metrics);
       if (metrics && metrics.found && predicate(metrics)) {
-        return metrics;
+        hits++;
+        if (hits >= requiredHits) return metrics;
+      } else {
+        hits = 0;
       }
       await new Promise((r) => setTimeout(r, intervalMs));
     }
     return null;
+  }
+
+  function showPhaseWithDebug(text) {
+    showPhase(text);
+  }
+
+  function updateDebug(label, value) {
+    liveOverlayText.textContent = `${liveOverlayBaseText} (${label}: ${value.toFixed(3)})`;
+  }
+
+  let liveOverlayBaseText = '';
+  function showPhase2(text) {
+    liveOverlayBaseText = text;
+    liveOverlayText.textContent = text;
+    liveOverlay.classList.add('active');
   }
 
   async function runGuidedScan() {
@@ -911,23 +932,27 @@
     result.className = 'result';
     hideSaveField();
 
-    const TURN_THRESHOLD = 0.045;
-    const EAR_RANGE_THRESHOLD = 0.045;
-    const STEP_TIMEOUT = 7000;
+    const TURN_THRESHOLD = 0.065;
+    const TURN_CONSECUTIVE_HITS = 2;
+    const EAR_DIP_MARGIN = 0.055;
+    const EAR_RECOVER_MARGIN = 0.03;
+    const STEP_TIMEOUT = 8000;
 
     try {
       // Step 0: get a stable baseline while looking straight
       showPhase('Look straight at the camera…');
       setStatus('Hold still and look at the camera', 'busy');
 
-      let baselineOffset = 0;
+      const baselineOffsets = [];
+      const baselineEars = [];
       let bestStraightBlob = null;
       let bestStraightEar = -1;
       const baselineStart = Date.now();
-      while (Date.now() - baselineStart < 1000) {
+      while (Date.now() - baselineStart < 1200) {
         const m = await checkPose();
         if (m && m.found) {
-          baselineOffset = m.offset;
+          baselineOffsets.push(m.offset);
+          baselineEars.push(m.ear);
           if (m.ear > bestStraightEar) {
             bestStraightEar = m.ear;
             bestStraightBlob = m.blob;
@@ -945,55 +970,72 @@
         return;
       }
 
-      // Step 1: turn one way — confirmed the instant offset swings far enough from baseline
-      showPhase('Turn your head to the right…');
-      setStatus('Turn your head to the right', 'busy');
+      const baselineOffset = baselineOffsets.reduce((a, b) => a + b, 0) / baselineOffsets.length;
+      const baselineEar = baselineEars.reduce((a, b) => a + b, 0) / baselineEars.length;
+
+      // Step 1: turn one way — needs several consecutive frames past threshold, not just one
+      showPhase2('Turn your head to the right…');
+      setStatus('Turn your head to the right, and hold it', 'busy');
       const turn1 = await waitUntil(
         (m) => Math.abs(m.offset - baselineOffset) > TURN_THRESHOLD,
-        STEP_TIMEOUT, 150
+        STEP_TIMEOUT, 150, TURN_CONSECUTIVE_HITS,
+        (m) => { if (m && m.found) updateDebug('turn', Math.abs(m.offset - baselineOffset)); }
       );
       if (!turn1) {
         hidePhase();
         setStatus('Right turn not detected', 'no-match');
         resultName.textContent = 'Liveness check failed';
-        resultMeta.textContent = 'Turn your head further next time and try again';
+        resultMeta.textContent = 'Turn your head further and hold briefly, then try again';
         showResult('no-match');
         return;
       }
       const turn1Sign = Math.sign(turn1.offset - baselineOffset);
       showPhase('Right turn detected ✓');
-      await new Promise((r) => setTimeout(r, 350));
+      await new Promise((r) => setTimeout(r, 400));
+
+      // Step 1.5: must return close to center before the left-turn counts —
+      // this stops "just relaxing back" from the right turn being mistaken for a left turn
+      const RETURN_THRESHOLD = 0.045;
+      showPhase2('Now return to looking straight…');
+      setStatus('Return to center first', 'busy');
+      await waitUntil(
+        (m) => Math.abs(m.offset - baselineOffset) < RETURN_THRESHOLD,
+        4000, 120, 2,
+        (m) => { if (m && m.found) updateDebug('to center', Math.abs(m.offset - baselineOffset)); }
+      );
 
       // Step 2: turn the other way — must swing to the OPPOSITE side of baseline
-      showPhase('Now turn your head to the left…');
-      setStatus('Now turn your head to the left', 'busy');
+      showPhase2('Now turn your head to the left…');
+      setStatus('Now turn your head to the left, and hold it', 'busy');
       const turn2 = await waitUntil(
         (m) => Math.sign(m.offset - baselineOffset) === -turn1Sign && Math.abs(m.offset - baselineOffset) > TURN_THRESHOLD,
-        STEP_TIMEOUT, 150
+        STEP_TIMEOUT, 150, TURN_CONSECUTIVE_HITS,
+        (m) => { if (m && m.found) updateDebug('turn', Math.abs(m.offset - baselineOffset)); }
       );
       if (!turn2) {
         hidePhase();
         setStatus('Left turn not detected', 'no-match');
         resultName.textContent = 'Liveness check failed';
-        resultMeta.textContent = 'Turn to the opposite side next time and try again';
+        resultMeta.textContent = 'Turn to the opposite side and hold briefly, then try again';
         showResult('no-match');
         return;
       }
       showPhase('Left turn detected ✓');
-      await new Promise((r) => setTimeout(r, 350));
+      await new Promise((r) => setTimeout(r, 400));
 
-      // Step 3: blink — track a rolling EAR window, confirm on a clear dip-and-rise
-      showPhase('Now blink your eyes…');
-      setStatus('Blink now', 'busy');
-      const earWindow = [];
-      const blinkStart = Date.now();
+      // Step 3: blink — must see a genuine dip-then-recover against this person's own open-eye baseline
+      showPhase2('Now blink your eyes…');
+      setStatus('Blink once, clearly', 'busy');
+      let blinkState = 'waiting_dip';
       let blinked = false;
+      const blinkStart = Date.now();
       while (Date.now() - blinkStart < STEP_TIMEOUT) {
         const m = await checkPose();
         if (m && m.found) {
-          earWindow.push(m.ear);
-          if (earWindow.length > 10) earWindow.shift();
-          if (earWindow.length >= 4 && (Math.max(...earWindow) - Math.min(...earWindow)) > EAR_RANGE_THRESHOLD) {
+          updateDebug('ear', m.ear);
+          if (blinkState === 'waiting_dip' && m.ear < baselineEar - EAR_DIP_MARGIN) {
+            blinkState = 'dipped';
+          } else if (blinkState === 'dipped' && m.ear > baselineEar - EAR_RECOVER_MARGIN) {
             blinked = true;
             break;
           }

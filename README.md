@@ -1,14 +1,28 @@
 # Face Recognition App
 
-A local face recognition web app built with FastAPI and `face_recognition` (dlib). Register a face under a name through your webcam, then verify new scans against everyone on file.
+A local face recognition web app built with FastAPI and `face_recognition` (dlib). Complete a guided, real-time liveness scan (head turns + blink, confirmed step by step like Face ID) through your webcam, and the app either recognizes you or asks for a name to save a new face.
 
 ## Features
 
-- Live camera capture, with a file-upload fallback when no camera is available
-- Face registration with named encodings
-- Face verification with match confidence score
+- **Real-time guided liveness scan** — the app asks you to turn your head one way, then the other, then blink; each step is confirmed live as you do it (not on a blind timer), which helps prevent someone from spoofing the scan with a static photo
+- Live camera capture, with a file-upload fallback when no camera is available (uploaded photos skip the liveness check since a static image can't blink)
+- Automatic recognition — no separate "Register"/"Verify" buttons; a recognized face shows "Welcome back", an unrecognized one asks for a name to save
+- Multiple reference photos per person for better match accuracy
+- Adjustable match strictness (tolerance) slider
+- Manage registered faces — list and remove people
 - Animated, modern frontend (vanilla HTML/CSS/JS — no build step)
 - Simple REST API with interactive docs (Swagger UI)
+
+## How the liveness scan works
+
+1. **Look straight** — the app records a short baseline (your neutral head position and eye-openness)
+2. **Turn your head to the right** — confirmed instantly once the head-turn is detected and held briefly
+3. **Return to center** — you must come back near the baseline position before the next step counts (stops a simple relax-back from being mistaken for a turn)
+4. **Turn your head to the left** — confirmed once you turn to the opposite side of the baseline
+5. **Blink** — confirmed once a genuine eyes-open → closed → open-again pattern is detected against your own baseline
+6. Once all steps pass, the clearest straight-on frame is matched against everyone on file
+
+This runs on repeated lightweight calls to a `/pose-check` endpoint (eye-openness + head-turn angle from face landmarks) — no extra ML models or heavy libraries needed.
 
 ## Tech stack
 
@@ -16,7 +30,7 @@ A local face recognition web app built with FastAPI and `face_recognition` (dlib
 - Python
 - FastAPI — API framework
 - Uvicorn — ASGI server
-- `face_recognition` (dlib) — face detection and face encoding/embedding
+- `face_recognition` (dlib) — face detection, face landmarks, and face encoding/embedding
 - OpenCV, Pillow, NumPy — image handling
 
 **Frontend**
@@ -59,7 +73,7 @@ Two things need to run at the same time: the **backend** (in a terminal) and the
 
 ### 1. Open the project in VS Code
 Open the `face-recognition-app` folder in VS Code (`File → Open Folder`, or right-click the folder → "Open with Code").
-#TODO:
+
 ### 2. Open a terminal
 `Terminal → New Terminal`, or press `` Ctrl+` ``.
 
@@ -94,11 +108,14 @@ Press `Ctrl+C` in the backend terminal, and close the browser tab.
 
 ## API
 
-| Method | Endpoint    | Description                                  |
-|--------|-------------|-----------------------------------------------|
-| POST   | `/register` | Register a face under a given name           |
-| POST   | `/verify`   | Compare a face against all registered faces  |
-| GET    | `/`         | Health check                                  |
+| Method | Endpoint      | Description                                                        |
+|--------|---------------|---------------------------------------------------------------------|
+| POST   | `/pose-check` | Single-frame check — returns eye-openness (EAR) and head-turn offset, used to drive the live guided scan |
+| POST   | `/register`   | Register a face under a given name (with duplicate-face warning)   |
+| POST   | `/verify`     | Compare a face against all registered faces                        |
+| GET    | `/list`       | List all registered people and how many photos each has            |
+| DELETE | `/delete`     | Remove a registered person                                         |
+| GET    | `/`           | Health check                                                        |
 
 ## Notes
 
